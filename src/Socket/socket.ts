@@ -5,6 +5,7 @@ import { promisify } from 'util'
 import { proto } from '../../WAProto/index.js'
 import {
 	DEF_CALLBACK_PREFIX,
+	PAIRING_RESPONSE_GRACE_MS,
 	DEF_TAG_PREFIX,
 	INITIAL_PREKEY_COUNT,
 	MIN_PREKEY_COUNT,
@@ -55,6 +56,7 @@ import {
 	isLidUser,
 	jidDecode,
 	jidEncode,
+	jidNormalizedUser,
 	S_WHATSAPP_NET
 } from '../WABinary'
 import { BinaryInfo } from '../WAM/BinaryInfo.js'
@@ -354,6 +356,66 @@ export const makeSocket = (config: SocketConfig) => {
 		}
 	}
 
+	/** Resolves `@username` handles (optionally with their 4-digit pin) to WhatsApp accounts. */
+	const onWhatsAppUsername = async (...usernames: Array<string | { username: string; pin?: string; usernameKey?: string }>) => {
+		const usyncQuery = new USyncQuery().withContactProtocol()
+		let added = 0
+		for (const entry of usernames) {
+			const raw = typeof entry === 'string' ? entry : entry?.username
+			const username = typeof raw === 'string' ? raw.replace(/^@/, '').trim() : ''
+			if (!username) {
+				continue
+			}
+
+			const user = new USyncUser().withUsername(username)
+			const pin = typeof entry === 'object' && entry !== null ? (entry.pin ?? entry.usernameKey) : undefined
+			if (pin !== undefined && pin !== null) {
+				user.withUsernameKey(pin)
+			}
+
+			usyncQuery.withUser(user)
+			added++
+		}
+
+		if (added === 0) {
+			return []
+		}
+
+		const results = await executeUSyncQuery(usyncQuery)
+		if (results) {
+			return results.list.filter(a => !!a.contact).map(({ contact, id }) => ({ jid: id, exists: contact as boolean }))
+		}
+
+		return []
+	}
+
+	/** Looks up the username of each given jid. */
+	const getUsernames = async (...jids: Array<string | string[]>) => {
+		const usyncQuery = new USyncQuery().withUsernameProtocol()
+		let added = 0
+		for (const entry of jids.flat()) {
+			if (!entry || !entry.includes('@')) {
+				continue
+			}
+
+			usyncQuery.withUser(new USyncUser().withId(jidNormalizedUser(entry)))
+			added++
+		}
+
+		if (added === 0) {
+			return []
+		}
+
+		const results = await executeUSyncQuery(usyncQuery)
+		if (results) {
+			return results.list
+				.filter(a => typeof a.username === 'string' && a.username.length > 0)
+				.map(({ username, id }) => ({ jid: id, username: username as string }))
+		}
+
+		return []
+	}
+
 	const pnFromLIDUSync = async (jids: string[]): Promise<LIDMapping[] | undefined> => {
 		const usyncQuery = new USyncQuery().withLIDProtocol().withContext('background')
 
@@ -379,7 +441,7 @@ export const makeSocket = (config: SocketConfig) => {
 		return []
 	}
 
-	const ev = makeEventBuffer(logger)
+	const ev = makeEventBuffer(logger, (config as any).maxEventListeners)
 
 	const { creds } = authState
 	// add transaction capability
@@ -635,6 +697,7 @@ export const makeSocket = (config: SocketConfig) => {
 
 		clearInterval(keepAliveReq)
 		clearTimeout(qrTimer)
+		clearPendingPairing()
 
 		ws.removeAllListeners('close')
 		ws.removeAllListeners('open')
@@ -761,6 +824,23 @@ export const makeSocket = (config: SocketConfig) => {
 		void end(new Boom(msg || 'Intentional Logout', { statusCode: DisconnectReason.loggedOut }))
 	}
 
+	// one pairing code is live at a time: asking again replaces the previous one, and
+	// cancelPairingCode() drops it without waiting for it to expire
+	let pendingPairing: { phoneNumber: string; expiresAt: number; timer: ReturnType<typeof setTimeout> } | undefined
+	function clearPendingPairing() {
+		if (pendingPairing?.timer) {
+			clearTimeout(pendingPairing.timer)
+		}
+
+		pendingPairing = undefined
+	}
+
+	const cancelPairingCode = () => {
+		const wasPending = Boolean(pendingPairing)
+		clearPendingPairing()
+		return wasPending
+	}
+
 	const requestPairingCode = async (phoneNumber: string, customPairingCode?: string): Promise<string> => {
 		if (authState.creds.registered) {
 			throw new Boom('Cannot request a pairing code: this session is already registered', { statusCode: 400 })
@@ -786,6 +866,19 @@ export const makeSocket = (config: SocketConfig) => {
 
 		// allow calling right after makeWASocket() without racing the websocket handshake
 		await waitForSocketOpen()
+
+		if (pendingPairing) {
+			logger.warn({ phoneNumber: pendingPairing.phoneNumber }, 'replacing a pairing code that was still pending')
+			clearPendingPairing()
+		}
+
+		const pairingWindowMs = 3 * 60_000
+		const guardTimer = setTimeout(() => {
+			logger.info({ phoneNumber: phone }, 'pairing code expired without being used')
+			pendingPairing = undefined
+		}, pairingWindowMs + PAIRING_RESPONSE_GRACE_MS)
+		guardTimer.unref?.()
+		pendingPairing = { phoneNumber: phone, expiresAt: Date.now() + pairingWindowMs, timer: guardTimer }
 
 		authState.creds.pairingCode = pairingCode
 
@@ -1195,6 +1288,7 @@ export const makeSocket = (config: SocketConfig) => {
 		digestKeyBundle,
 		rotateSignedPreKey,
 		requestPairingCode,
+		cancelPairingCode,
 		updateServerTimeOffset,
 		sendUnifiedSession,
 		wamBuffer: publicWAMBuffer,
@@ -1203,6 +1297,8 @@ export const makeSocket = (config: SocketConfig) => {
 		sendWAMBuffer,
 		executeUSyncQuery,
 		onWhatsApp,
+		onWhatsAppUsername,
+		getUsernames,
 		fetchAccountReachoutTimelock,
 		fetchNewChatMessageCap
 	}

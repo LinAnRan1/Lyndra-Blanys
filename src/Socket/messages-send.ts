@@ -1,7 +1,13 @@
 import NodeCache from '@cacheable/node-cache'
 import { Boom } from '@hapi/boom'
 import { proto } from '../../WAProto/index.js'
-import { DEFAULT_CACHE_TTLS, WA_DEFAULT_EPHEMERAL } from '../Defaults'
+import {
+	DEFAULT_CACHE_TTLS,
+	MAX_OUTBOUND_RESEND_ENTRIES,
+	MEMBER_LABEL_MAX_LENGTH,
+	WA_DEFAULT_EPHEMERAL
+} from '../Defaults'
+import { hasValidAlbumMedia } from '../Utils/messages-extra.js'
 import type {
 	AnyMessageContent,
 	MediaConnInfo,
@@ -102,6 +108,7 @@ import {
 import { USyncQuery, USyncUser } from '../WAUSync'
 import { sendAlbumMessage } from './album'
 import { Dugong } from './dugong.js'
+import { makeSendExtensions } from './send-extended.js'
 import { makeNewsletterSocket } from './newsletter'
 
 const NATIVE_FLOW_BUTTON_MAP: Record<string, string> = {
@@ -134,6 +141,34 @@ export const getButtonType = (message: proto.IMessage): string | null => {
 	}
 
 	return 'interactive'
+}
+
+export const buildMemberLabelMessage = (jid: string, memberLabel?: string | null) => {
+	if (!isJidGroup(jid)) {
+		throw new Boom('a member label belongs to a group, so jid must be a group jid', { statusCode: 400, data: { jid } })
+	}
+
+	const label = memberLabel === undefined || memberLabel === null ? '' : String(memberLabel).slice(0, MEMBER_LABEL_MAX_LENGTH)
+	return {
+		label,
+		content: {
+			protocolMessage: {
+				type: proto.Message.ProtocolMessage.Type.GROUP_MEMBER_LABEL_CHANGE,
+				memberLabel: {
+					label,
+					labelTimestamp: unixTimestampSeconds()
+				}
+			}
+		},
+		node: {
+			tag: 'meta',
+			attrs: {
+				tag_reason: label ? 'user_update' : 'user_delete',
+				appdata: 'member_tag'
+			},
+			content: undefined
+		}
+	}
 }
 
 export const makeMessagesSocket = (config: SocketConfig) => {
@@ -179,6 +214,26 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		})
 	/** Serializes writes to userDevicesCache across USync refresh and device-notification handling. */
 	const devicesMutex = makeMutex()
+
+	/** recently sent messages, kept so a retryable server nack can re-send them */
+	const outboundResendCache =
+		config.outboundResendCache ||
+		new NodeCache<{ jid: string; message: proto.IMessage }>({
+			stdTTL: DEFAULT_CACHE_TTLS.OUTBOUND_RESEND,
+			maxKeys: MAX_OUTBOUND_RESEND_ENTRIES,
+			useClones: false
+		})
+	const rememberOutboundMessage = (messageId: string, jid: string, message: proto.IMessage) => {
+		if (!messageId || !message) {
+			return
+		}
+
+		try {
+			outboundResendCache.set(messageId, { jid, message })
+		} catch (error) {
+			logger.trace({ err: error }, 'could not remember outbound message')
+		}
+	}
 
 	// Initialize message retry manager if enabled
 	const messageRetryManager = enableRecentMessageCache ? new MessageRetryManager(logger, maxMsgRetryCount) : null
@@ -479,33 +534,15 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 	}
 
 	/**
-	 * Update Member Label
+	 * Update (or clear, with an empty label) the caller's member label in a group.
 	 */
-	const updateMemberLabel = (jid: string, memberLabel: string) => {
-		return relayMessage(
-			jid,
-			{
-				protocolMessage: {
-					type: proto.Message.ProtocolMessage.Type.GROUP_MEMBER_LABEL_CHANGE,
-					memberLabel: {
-						label: memberLabel?.slice(0, 30),
-						labelTimestamp: unixTimestampSeconds()
-					}
-				}
-			},
-			{
-				additionalNodes: [
-					{
-						tag: 'meta',
-						attrs: {
-							tag_reason: 'user_update',
-							appdata: 'member_tag'
-						},
-						content: undefined
-					}
-				]
-			}
-		)
+	const updateMemberLabel = async (jid: string, memberLabel: string, options: { additionalNodes?: BinaryNode[] } = {}) => {
+		const { label, content, node } = buildMemberLabelMessage(jid, memberLabel)
+		const messageId = await relayMessage(jid, content as proto.IMessage, {
+			...(options as object),
+			additionalNodes: [node as BinaryNode, ...(options.additionalNodes ?? [])]
+		} as any)
+		return { jid, label, messageId }
 	}
 
 	const assertSessions = async (jids: string[], force?: boolean) => {
@@ -707,6 +744,10 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		const finalJid = jid
 
 		msgId = msgId || generateMessageIDV2(meId)
+		if (!isRetryResend) {
+			rememberOutboundMessage(msgId, jid, message)
+		}
+
 		useUserDevicesCache = useUserDevicesCache !== false
 		useCachedGroupMetadata = useCachedGroupMetadata !== false && !isStatus
 
@@ -824,10 +865,36 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 					throw new Boom('Per-jid patching is not supported in groups')
 				}
 
-				const bytes = encodeWAMessage(patched)
-				reportingMessage = patched
 				const groupAddressingMode = additionalAttributes?.['addressing_mode'] || groupData?.addressingMode || 'lid'
 				const groupSenderIdentity = groupAddressingMode === 'lid' && meLid ? meLid : meId
+
+				let toEncode = patched
+				if (
+					(config as { inlineSenderKeyDistribution?: boolean }).inlineSenderKeyDistribution !== false &&
+					isGroup &&
+					!patched.senderKeyDistributionMessage
+				) {
+					try {
+						if (await signalRepository.hasSenderKey({ group: destinationJid, meId: groupSenderIdentity })) {
+							const inlineSkdm = await signalRepository.getSenderKeyDistributionMessage({
+								group: destinationJid,
+								meId: groupSenderIdentity
+							})
+							toEncode = {
+								...patched,
+								senderKeyDistributionMessage: {
+									groupId: destinationJid,
+									axolotlSenderKeyDistributionMessage: inlineSkdm
+								}
+							}
+						}
+					} catch (err) {
+						logger.warn({ err, jid: destinationJid }, 'failed to inline the sender key distribution message')
+					}
+				}
+
+				const bytes = encodeWAMessage(toEncode)
+				reportingMessage = toEncode
 
 				const { ciphertext, senderKeyDistributionMessage } = await signalRepository.encryptGroupMessage({
 					group: destinationJid,
@@ -1320,7 +1387,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 	}
 
 	const waUploadToServer = getWAUploadToServer(config, refreshMediaConn)
-	const ourin = new Dugong(waUploadToServer, relayMessage, config, sock)
+	const richApi = new Dugong(waUploadToServer, relayMessage, config, sock)
 
 	/** Relay a pre-generated rich-response payload (`botForwardedMessage` > `richResponseMessage`). */
 	const sendRich = async (jid: string, generated: { message: proto.IMessage; messageId: string }) => {
@@ -1341,6 +1408,17 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		}
 	})
 
+	const sendExtensions = makeSendExtensions({
+		config,
+		logger,
+		authState,
+		messageMutex,
+		upsertMessage,
+		relayMessage,
+		waUploadToServer,
+		updateMemberLabel
+	})
+
 	return {
 		...sock,
 		userDevicesCache,
@@ -1355,13 +1433,15 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		// Function (not getter) so the spread in chats.ts preserves the live closure binding.
 		getMediaHost: () => mediaHost,
 		waUploadToServer,
-		ourin,
+		richApi,
 		fetchPrivacySettings,
 		sendPeerDataOperationMessage,
 		createParticipantNodes,
 		getUSyncDevices,
 		messageRetryManager,
 		updateMemberLabel,
+		...sendExtensions,
+		outboundResendCache,
 		updateMediaMessage: async (message: WAMessage) => {
 			const content = assertMediaContent(message.message)
 			const mediaKey = content.mediaKey!
@@ -1411,6 +1491,15 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		},
 		sendMessage: async (jid: string, content: AnyMessageContent, options: MiscMessageGenerationOptions = {}) => {
 			const userJid = authState.creds.me!.id
+			const mediaContent = content as { hd?: unknown; image?: unknown; video?: unknown }
+			if (mediaContent?.hd && (mediaContent.image || mediaContent.video) && !Array.isArray(jid)) {
+				return sendExtensions.sendHD(jid, content, options)
+			}
+
+			if (mediaContent?.image && mediaContent?.video && !Array.isArray(jid)) {
+				return sendExtensions.sendImgVid(jid, content, options)
+			}
+
 			if ('albumMessage' in content) {
 				return sendAlbumMessage(jid, content, options, {
 					createParentMessage: async (message, quoted) =>
@@ -1444,9 +1533,9 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 						await relayMessage(jid, message.message!, { messageId: message.key.id! })
 					}
 				})
-			} else if (ourin.detectType(content)) {
+			} else if (richApi.detectType(content)) {
 				const { quoted } = options
-				const messageType = ourin.detectType(content)
+				const messageType = richApi.detectType(content)
 				const buildAndRelay = async (message: WAMessageContent) => {
 					const generated = generateWAMessageFromContent(jid, message, { userJid, quoted })
 					await relayMessage(jid, generated.message!, { messageId: generated.key.id! })
@@ -1455,23 +1544,23 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 
 				switch (messageType) {
 					case 'PAYMENT':
-						return buildAndRelay(await ourin.handlePayment(content, quoted))
+						return buildAndRelay(await richApi.handlePayment(content, quoted))
 					case 'PRODUCT':
-						return buildAndRelay(await ourin.handleProduct(content, jid, quoted))
+						return buildAndRelay(await richApi.handleProduct(content, jid, quoted))
 					case 'CAROUSEL':
-						return buildAndRelay(await ourin.handleCarousel(content, jid, quoted))
+						return buildAndRelay(await richApi.handleCarousel(content, jid, quoted))
 					case 'INTERACTIVE':
-						return buildAndRelay(await ourin.handleInteractive(content, jid, quoted))
+						return buildAndRelay(await richApi.handleInteractive(content, jid, quoted))
 					case 'INTERACTIVE_BUTTONS':
-						return buildAndRelay(await ourin.handleInteractiveButtons(content, jid, quoted))
+						return buildAndRelay(await richApi.handleInteractiveButtons(content, jid, quoted))
 					case 'EVENT':
-						return ourin.handleEvent(content, jid, quoted)
+						return richApi.handleEvent(content, jid, quoted)
 					case 'POLL_RESULT':
-						return ourin.handlePollResult(content, jid, quoted)
+						return richApi.handlePollResult(content, jid, quoted)
 					case 'GROUP_STORY':
-						return ourin.handleGroupStory(content, jid, quoted, options)
+						return richApi.handleGroupStory(content, jid, quoted, options)
 					case 'ALBUM':
-						return ourin.handleAlbum(content, jid, quoted)
+						return richApi.handleAlbum(content, jid, quoted)
 				}
 			} else if (
 				typeof content === 'object' &&
@@ -1558,21 +1647,62 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 					})
 				}
 
+				// array-style album: `album: [{ image }, { video }, ...]` sends the parent, then each media tied to it
+				const albumItems = (content as { album?: unknown }).album
+				if (Array.isArray(albumItems)) {
+					const delayMs = (options as { delayMs?: number }).delayMs ?? 1500
+					await new Promise<void>(resolve => setTimeout(resolve, delayMs))
+					for (const albumMedia of albumItems) {
+						const albumMsg = await generateWAMessage(jid, albumMedia, {
+							logger,
+							userJid,
+							upload: waUploadToServer,
+							mediaCache: config.mediaCache,
+							options: config.options,
+							...options,
+							messageId: generateMessageIDV2(userJid)
+						})
+						if (!hasValidAlbumMedia(normalizeMessageContent(albumMsg.message))) {
+							throw new Boom('Invalid message type for album', { statusCode: 400 })
+						}
+
+						albumMsg.message!.messageContextInfo ||= {}
+						albumMsg.message!.messageContextInfo.messageAssociation = {
+							parentMessageKey: fullMsg.key,
+							associationType: proto.MessageAssociation.AssociationType.MEDIA_ALBUM
+						}
+						await relayMessage(jid, albumMsg.message!, {
+							messageId: albumMsg.key.id!,
+							useCachedGroupMetadata: options.useCachedGroupMetadata,
+							statusJidList: options.statusJidList,
+							additionalAttributes,
+							additionalNodes
+						})
+						if (config.emitOwnEvents) {
+							process.nextTick(async () => {
+								await messageMutex.mutex(() => upsertMessage(albumMsg, 'append'))
+							})
+						}
+
+						await new Promise<void>(resolve => setTimeout(resolve, delayMs))
+					}
+				}
+
 				return fullMsg
 			}
 		},
-		sendStatusMention: (content: AnyMessageContent, jids: string[] = []) => ourin.sendStatusWhatsApp(content, jids),
+		sendStatusMention: (content: AnyMessageContent, jids: string[] = []) => richApi.sendStatusWhatsApp(content, jids),
 
-		/** ourin-baileys alias of `issuePrivacyTokens` */
+		/** richApi-baileys alias of `issuePrivacyTokens` */
 		getPrivacyTokens: (jids: string[]) => issuePrivacyTokens(jids),
 
-		/** Send a story/status inside a group (ourin-baileys `swgc`). */
+		/** Send a story/status inside a group (richApi-baileys `swgc`). */
 		swgc: async (jid: string, content: AnyMessageContent, _options: MiscMessageGenerationOptions = {}) => {
 			if (!isJidGroup(jid)) {
 				throw new Boom('JID must be a group', { statusCode: 400 })
 			}
 
-			return ourin.handleGroupStory({ groupStatusMessage: content }, jid, null)
+			return richApi.handleGroupStory({ groupStatusMessage: content }, jid, null)
 		},
 
 		/**
@@ -1667,7 +1797,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 			return messageId
 		},
 
-		// ───────────── AI Rich Response helpers (ourin-baileys compatible) ─────────────
+		// ───────────── AI Rich Response helpers (richApi-baileys compatible) ─────────────
 		sendTable: (
 			jid: string,
 			title: string,

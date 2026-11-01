@@ -1,10 +1,5 @@
-/**
- * Shared type definitions for baileys-caller.
- *
- * @author ShellTear
- */
-/** Mirrors the WhatsApp WASM `CallState` enum. */
-export const CallState = {
+/* Lyndrā-Blanys: calling engine, based on the ShellTear / WhatsApp Web VoIP lineage. See LICENSE and NOTICE.md. */
+export const CallState = Object.freeze({
     Idle: 0,
     Calling: 1,
     PreacceptReceived: 2,
@@ -13,5 +8,6 @@ export const CallState = {
     AcceptReceived: 5,
     Active: 6,
     ActiveElsewhere: 7,
-    Ending: 13,
-};
+    Ending: 13
+});
+export default CallState;

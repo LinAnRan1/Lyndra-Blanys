@@ -5,6 +5,7 @@ import type { QuickReplyAction } from '../Types/Bussines.js';
 import type { LabelActionBody } from '../Types/Label.js';
 import { type BinaryNode } from '../WABinary/index.js';
 import { USyncQuery } from '../WAUSync/index.js';
+export { buildSpamListNode, readSpamReportResult } from './chats-extended.js';
 export declare const buildProfilePictureQueryContent: (type: "preview" | "image", tcTokenContent?: BinaryNode[]) => BinaryNode[];
 export declare const makeChatsSocket: (config: SocketConfig) => {
     serverProps: {
@@ -15,6 +16,16 @@ export declare const makeChatsSocket: (config: SocketConfig) => {
         /** AB prop 14303: issue tctokens to LID instead of PN. WA Web default: false. */
         lidTrustedTokenIssueToLid: boolean;
     };
+    fetchProps: ({ full }?: {
+        full?: boolean;
+    }) => Promise<{
+        [_: string]: string;
+    }>;
+    getServerProps: ({ refresh }?: {
+        refresh?: boolean;
+    }) => Promise<{
+        [_: string]: string;
+    }>;
     createCallLink: (type: "audio" | "video", event?: {
         startTime: number;
     }, timeoutMs?: number) => Promise<string | undefined>;
@@ -109,6 +120,7 @@ export declare const makeChatsSocket: (config: SocketConfig) => {
     digestKeyBundle: () => Promise<void>;
     rotateSignedPreKey: () => Promise<void>;
     requestPairingCode: (phoneNumber: string, customPairingCode?: string) => Promise<string>;
+    cancelPairingCode: () => boolean;
     updateServerTimeOffset: ({ attrs }: BinaryNode) => void;
     sendUnifiedSession: () => Promise<void>;
     wamBuffer: import("../index.js").BinaryInfo;
@@ -119,6 +131,18 @@ export declare const makeChatsSocket: (config: SocketConfig) => {
         jid: string;
         exists: boolean;
     }[] | undefined>;
+    onWhatsAppUsername: (...usernames: Array<string | {
+        username: string;
+        pin?: string;
+        usernameKey?: string;
+    }>) => Promise<{
+        jid: string;
+        exists: boolean;
+    }[]>;
+    getUsernames: (...jids: Array<string | string[]>) => Promise<{
+        jid: string;
+        username: string;
+    }[]>;
     fetchAccountReachoutTimelock: () => Promise<import("../Types/index.js").ReachoutTimelockState>;
     fetchNewChatMessageCap: () => Promise<import("../Types/index.js").NewChatMessageCapInfo>;
 };

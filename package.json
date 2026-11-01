@@ -1,24 +1,42 @@
 {
-  "name": "baileys",
+  "name": "lyndra-blanys",
   "type": "module",
-  "version": "7.0.0-rc14",
-  "description": "A WebSockets library for interacting with WhatsApp Web",
+  "version": "0.0.1",
+  "description": "Lyndrā-Blanys — a WebSockets-based TypeScript/Node library for the WhatsApp Web multi-device API, built on Baileys 7.0.0-rc14.",
   "keywords": [
+    "automation",
+    "baileys",
+    "lyndra-blanys",
+    "message-builder",
+    "multi-device",
+    "newsletter",
+    "voip",
     "whatsapp",
-    "automation"
+    "whatsapp-api"
   ],
-  "homepage": "https://github.com/WhiskeySockets/Baileys/",
+  "homepage": "https://github.com/LinAnRan1/lin-baileys",
   "repository": {
-    "url": "git@github.com:WhiskeySockets/Baileys.git"
+    "type": "git",
+    "url": "git+https://github.com/LinAnRan1/lin-baileys.git"
   },
   "license": "MIT",
-  "author": "Rajeh Taher",
+  "author": "Lín Ān Rán",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
+    "src/**/*",
     "lib/**/*",
     "WAProto/**/*",
-    "engine-requirements.js"
+    "Example/**/*",
+    "Media/**/*",
+    "scripts/**/*",
+    "docs/**/*",
+    "test/**/*",
+    "proto-extract/**/*",
+    "engine-requirements.js",
+    "NOTICE.md",
+    "LICENSE",
+    "README.md"
   ],
   "scripts": {
     "build:all": "npm run build && npm run build:docs",
@@ -38,9 +56,11 @@
     "release": "release-it",
     "test": "node --experimental-vm-modules ./node_modules/.bin/jest --testMatch '**/*.test.ts'",
     "test:e2e": "NODE_TLS_REJECT_UNAUTHORIZED=0 node --experimental-vm-modules ./node_modules/.bin/jest --runInBand --forceExit --testMatch '**/*.test-e2e.ts'",
-    "update:version": "tsx ./scripts/update-version.ts"
+    "update:version": "tsx ./scripts/update-version.ts",
+    "test:port": "node --test test/port/*.test.js"
   },
   "dependencies": {
+    "@adiwajshing/keyed-db": "^0.2.4",
     "@cacheable/node-cache": "^1.4.0",
     "@hapi/boom": "^9.1.3",
     "async-mutex": "^0.5.0",
@@ -69,6 +89,7 @@
     "eslint": "^9",
     "eslint-config-prettier": "^10.1.2",
     "eslint-plugin-prettier": "^5.4.0",
+    "fluent-ffmpeg": "^2.1.3",
     "jest": "^30.0.5",
     "jimp": "^1.6.1",
     "jiti": "^2.4.2",
@@ -80,6 +101,7 @@
     "prettier": "^3.5.3",
     "protobufjs-cli": "^1.1.3",
     "release-it": "^20.0.1",
+    "sharp": "^0.34.5",
     "ts-jest": "^29.4.0",
     "tsc-esm-fix": "^3.1.2",
     "tsx": "^4.20.3",
@@ -88,10 +110,17 @@
     "typescript": "^5.8.2"
   },
   "peerDependencies": {
+    "@nekodb/client": "*",
     "@roamhq/wrtc": "*",
     "audio-decode": "^2.1.3",
+    "better-sqlite3": "^11.0.0 || ^12.0.0",
+    "fluent-ffmpeg": "*",
+    "ioredis": "^5.0.0",
     "jimp": "^1.6.1",
     "link-preview-js": "^3.0.0",
+    "mongodb": "^6.0.0",
+    "mysql2": "^3.0.0",
+    "pg": "^8.0.0",
     "sharp": "*"
   },
   "resolutions": {
@@ -124,10 +153,22 @@
     "yaml@npm:^2.6.1": "^2.8.4"
   },
   "peerDependenciesMeta": {
+    "@nekodb/client": {
+      "optional": true
+    },
     "@roamhq/wrtc": {
       "optional": true
     },
     "audio-decode": {
+      "optional": true
+    },
+    "better-sqlite3": {
+      "optional": true
+    },
+    "fluent-ffmpeg": {
+      "optional": true
+    },
+    "ioredis": {
       "optional": true
     },
     "jimp": {
@@ -135,10 +176,25 @@
     },
     "link-preview-js": {
       "optional": true
+    },
+    "mongodb": {
+      "optional": true
+    },
+    "mysql2": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    },
+    "sharp": {
+      "optional": true
     }
   },
   "packageManager": "yarn@4.9.2",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/LinAnRan1/lin-baileys/issues"
   }
 }

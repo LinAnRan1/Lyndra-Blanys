@@ -207,3 +207,16 @@ export const getAdditionalNode = (name: string): BinaryNode[] => {
 		}
 	]
 }
+
+type BizSourceMessage = {
+	buttonsMessage?: unknown
+	listMessage?: unknown
+	interactiveMessage?: { nativeFlowMessage?: { buttons?: Array<{ name?: string | null }> | null } | null } | null
+}
+
+/** Builds the `<biz>` node that goes with a buttons / list / native-flow message. */
+export const getBizBinaryNode = (message: BizSourceMessage): BinaryNode => {
+	const buttonName = message.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name
+	const kind = message.listMessage ? 'list' : message.buttonsMessage ? 'buttons' : (buttonName ?? 'interactive')
+	return getAdditionalNode(kind)[0]!
+}

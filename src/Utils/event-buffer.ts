@@ -70,8 +70,14 @@ type BaileysBufferableEventEmitter = BaileysEventEmitter & {
  * The event buffer logically consolidates different events into a single event
  * making the data processing more efficient.
  */
-export const makeEventBuffer = (logger: ILogger): BaileysBufferableEventEmitter => {
+export const DEFAULT_MAX_EVENT_LISTENERS = 64
+
+export const makeEventBuffer = (
+	logger: ILogger,
+	maxListeners: number = DEFAULT_MAX_EVENT_LISTENERS
+): BaileysBufferableEventEmitter => {
 	const ev = new EventEmitter()
+	ev.setMaxListeners(Number.isFinite(maxListeners) && maxListeners >= 0 ? maxListeners : DEFAULT_MAX_EVENT_LISTENERS)
 	const historyCache = new Set<string>()
 
 	let data = makeBufferData()
@@ -237,6 +243,15 @@ export const makeEventBuffer = (logger: ILogger): BaileysBufferableEventEmitter 
 		on: (...args) => ev.on(...args),
 		off: (...args) => ev.off(...args),
 		removeAllListeners: (...args) => ev.removeAllListeners(...args),
+		once: (...args: Parameters<typeof ev.once>) => ev.once(...args),
+		removeListener: (...args: Parameters<typeof ev.removeListener>) => ev.removeListener(...args),
+		listeners: (...args: Parameters<typeof ev.listeners>) => ev.listeners(...args),
+		rawListeners: (...args: Parameters<typeof ev.rawListeners>) => ev.rawListeners(...args),
+		eventNames: () => ev.eventNames(),
+		addListener: (...args: Parameters<typeof ev.addListener>) => ev.addListener(...args),
+		setMaxListeners: (count: number) => ev.setMaxListeners(count),
+		getMaxListeners: () => ev.getMaxListeners(),
+		listenerCount: (...args: Parameters<typeof ev.listenerCount>) => ev.listenerCount(...args),
 		destroy() {
 			// Clear buffer timeout
 			if (bufferTimeout) {

@@ -63,6 +63,9 @@ import {
 } from '../WABinary'
 import { USyncQuery, USyncUser } from '../WAUSync'
 import { makeSocket } from './socket.js'
+import { makeChatsExtensions } from './chats-extended.js'
+export { buildSpamListNode, readSpamReportResult } from './chats-extended.js'
+import { executeWMexQuery as genericExecuteWMexQuery } from './mex.js'
 
 export const buildProfilePictureQueryContent = (
 	type: 'preview' | 'image',
@@ -983,8 +986,11 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		}
 	}
 
-	/** fetch AB props */
-	const fetchProps = async () => {
+	let lastServerProps: { [_: string]: string } = {}
+
+	/** fetch AB props; `full` ignores the stored hash and refetches everything */
+	const fetchProps = async ({ full = false }: { full?: boolean } = {}) => {
+		const hash = full ? undefined : authState?.creds?.lastPropHash
 		const resultNode = await query({
 			tag: 'iq',
 			attrs: {
@@ -997,7 +1003,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 					tag: 'props',
 					attrs: {
 						protocol: '1',
-						...(authState?.creds?.lastPropHash ? { hash: authState.creds.lastPropHash } : {})
+						...(hash ? { hash } : {})
 					}
 				}
 			]
@@ -1005,16 +1011,26 @@ export const makeChatsSocket = (config: SocketConfig) => {
 
 		const propsNode = getBinaryNodeChild(resultNode, 'props')
 
-		let props: { [_: string]: string } = {}
 		if (propsNode) {
-			if (propsNode.attrs?.hash) {
-				// on some clients, the hash is returning as undefined
-				authState.creds.lastPropHash = propsNode?.attrs?.hash
-				ev.emit('creds.update', authState.creds)
+			const delta = reduceBinaryNodeToDictionary(propsNode, 'prop')
+			const update: Partial<typeof authState.creds> = {}
+			if (full) {
+				lastServerProps = delta
+			} else if (Object.keys(delta).length) {
+				lastServerProps = { ...lastServerProps, ...delta }
 			}
 
-			props = reduceBinaryNodeToDictionary(propsNode, 'prop')
+			if (propsNode.attrs?.hash && propsNode.attrs.hash !== authState.creds.lastPropHash) {
+				update.lastPropHash = propsNode.attrs.hash
+			}
+
+			if (Object.keys(update).length) {
+				Object.assign(authState.creds, update)
+				ev.emit('creds.update', update)
+			}
 		}
+
+		const props = lastServerProps
 
 		// Extract protocol-relevant AB props (only the ones we need)
 		const privacyTokenProp = props['10518'] ?? props['privacy_token_sending_on_all_1_on_1_messages']
@@ -1035,6 +1051,18 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		logger.debug({ serverProps }, 'fetched props')
 
 		return props
+	}
+
+	const getServerProps = async ({ refresh = false }: { refresh?: boolean } = {}) => {
+		if (refresh) {
+			return fetchProps({ full: true })
+		}
+
+		if (!Object.keys(lastServerProps).length) {
+			await fetchProps({ full: true })
+		}
+
+		return lastServerProps
 	}
 
 	/**
@@ -1481,9 +1509,24 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		privacySettings = undefined
 	})
 
+	const extended = makeChatsExtensions({
+		query,
+		generateMessageTag,
+		executeWMexQuery: (variables: Record<string, unknown>, queryId: string, dataPath: string) =>
+			genericExecuteWMexQuery<any>(variables, queryId, dataPath, query, generateMessageTag),
+		signalRepository,
+		sock,
+		getBusinessProfile,
+		fetchStatus,
+		profilePictureUrl
+	}) as Record<string, any>
+
 	return {
 		...sock,
+		...extended,
 		serverProps,
+		fetchProps,
+		getServerProps,
 		createCallLink,
 		getBotListV2,
 		messageMutex,

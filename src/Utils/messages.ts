@@ -42,6 +42,10 @@ import {
 	type MediaDownloadOptions
 } from './messages-media'
 import { shouldIncludeReportingToken } from './reporting-utils'
+import { applyPostContent, buildExtraContent, buildLeadContent, prepareLinkThumbnail } from './messages-extra.js'
+import { buildSocialPreview } from './link-preview-metadata.js'
+import { normalizeStickers } from './status-stickers.js'
+
 
 type ExtractByKey<T, K extends PropertyKey> = T extends Record<K, any> ? T : never
 type RequireKey<T, K extends keyof T> = T & {
@@ -108,18 +112,16 @@ export const generateLinkPreviewIfRequired = async (
 }
 
 const assertColor = async (color: any) => {
-	let assertedColor
 	if (typeof color === 'number') {
-		assertedColor = color > 0 ? color : 0xffffffff + Number(color) + 1
-	} else {
-		let hex = color.trim().replace('#', '')
-		if (hex.length <= 6) {
-			hex = 'FF' + hex.padStart(6, '0')
-		}
-
-		assertedColor = parseInt(hex, 16)
-		return assertedColor
+		return color >= 0 ? color : 0xffffffff + Number(color) + 1
 	}
+
+	let hex = String(color).trim().replace('#', '')
+	if (hex.length <= 6) {
+		hex = 'FF' + hex.padStart(6, '0')
+	}
+
+	return parseInt(hex, 16)
 }
 
 export const prepareWAMessageMedia = async (
@@ -144,6 +146,15 @@ export const prepareWAMessageMedia = async (
 		media: (message as any)[mediaType]
 	}
 	delete (uploadData as any)[mediaType]
+
+	const annotations = (uploadData as any).statusStickers ?? (uploadData as any).interactiveAnnotations
+	delete (uploadData as any).statusStickers
+	if (annotations) {
+		if (mediaType !== 'image' && mediaType !== 'video') {
+			throw new Boom('status stickers only ride on an image or a video', { statusCode: 400 })
+		}
+		;(uploadData as any).interactiveAnnotations = normalizeStickers(annotations)
+	}
 	// check if cacheable + generate cache key
 	const cacheableKey =
 		typeof uploadData.media === 'object' &&
@@ -226,7 +237,7 @@ export const prepareWAMessageMedia = async (
 		(mediaType === 'image' || mediaType === 'video') && typeof uploadData['jpegThumbnail'] === 'undefined'
 	const requiresWaveformProcessing =
 		mediaType === 'audio' && uploadData.ptt === true && typeof uploadData.waveform === 'undefined'
-	const requiresAudioBackground = options.backgroundColor && mediaType === 'audio' && uploadData.ptt === true
+	const requiresAudioBackground = options.backgroundColor != null && mediaType === 'audio' && uploadData.ptt === true
 	const requiresOriginalForSomeProcessing = requiresDurationComputation || requiresThumbnailComputation
 	const { mediaKey, encFilePath, originalFilePath, fileEncSha256, fileSha256, fileLength } = await encryptedStream(
 		uploadData.media,
@@ -250,6 +261,12 @@ export const prepareWAMessageMedia = async (
 			return result
 		})(),
 		(async () => {
+			if (requiresAudioBackground) {
+				// set before the slow passes so a failed waveform/duration pass cannot take the colour with it
+				uploadData.backgroundArgb = await assertColor(options.backgroundColor)
+				logger?.debug('computed backgroundColor audio status')
+			}
+
 			try {
 				if (requiresThumbnailComputation) {
 					const { thumbnail, originalImageDimensions } = await generateThumbnail(
@@ -277,10 +294,6 @@ export const prepareWAMessageMedia = async (
 					logger?.debug('processed waveform')
 				}
 
-				if (requiresAudioBackground) {
-					uploadData.backgroundArgb = await assertColor(options.backgroundColor)
-					logger?.debug('computed backgroundColor audio status')
-				}
 			} catch (error) {
 				logger?.warn({ trace: (error as any).stack }, 'failed to obtain extra info')
 			}
@@ -389,7 +402,7 @@ export const hasNonNullishProperty = <K extends PropertyKey>(
 	)
 }
 
-function hasOptionalProperty<T, K extends PropertyKey>(obj: T, key: K): obj is WithKey<T, K> {
+export function hasOptionalProperty<T, K extends PropertyKey>(obj: T, key: K): obj is WithKey<T, K> {
 	return typeof obj === 'object' && obj !== null && key in obj && (obj as any)[key] !== null
 }
 
@@ -398,7 +411,36 @@ export const generateWAMessageContent = async (
 	options: MessageContentGenerationOptions
 ) => {
 	let m: WAMessageContent = {}
-	if (hasNonNullishProperty(message, 'text')) {
+	if ((message as any)?.raw != null) {
+		const rawContent = message as any
+		delete rawContent.raw
+		return rawContent as proto.Message
+	}
+
+	const extraHelpers = { prepareWAMessageMedia, getContentType }
+	if (hasNonNullishProperty(message, 'stickers' as any) && !hasNonNullishProperty(message, 'stickerPack' as any)) {
+		const input = message as any
+		message = {
+			...input,
+			stickerPack: {
+				name: input.name ?? '📦 Sticker Pack',
+				publisher: input.publisher ?? 'Lyndrā-Blanys',
+				description: input.description ?? '',
+				cover: input.cover,
+				stickers: input.stickers.map((item: any) =>
+					item && typeof item === 'object' && 'data' in item
+						? { sticker: item.data, emojis: item.emojis, accessibilityLabel: item.accessibilityLabel }
+						: item
+				)
+			}
+		} as AnyMessageContent
+	}
+
+	const lead = await buildLeadContent(message, options)
+	const extraContent = lead?.m ?? (await buildExtraContent(message, options, extraHelpers))
+	if (extraContent) {
+		m = extraContent
+	} else if (hasNonNullishProperty(message, 'text')) {
 		const extContent = { text: message.text } as WATextMessage
 
 		let urlInfo = message.linkPreview
@@ -406,12 +448,24 @@ export const generateWAMessageContent = async (
 			urlInfo = await generateLinkPreviewIfRequired(message.text, options.getUrlInfo, options.logger)
 		}
 
+		const richInfo = urlInfo as any
+		if (richInfo?.image && !richInfo.highQualityThumbnail) {
+			urlInfo = {
+				...richInfo,
+				...(await prepareLinkThumbnail(richInfo.image, options, {
+					thumbnailWidth: richInfo.thumbnailWidth,
+					upload: richInfo.large !== false
+				}))
+			}
+		}
+
 		if (urlInfo) {
 			extContent.matchedText = urlInfo['matched-text']
 			extContent.jpegThumbnail = urlInfo.jpegThumbnail
 			extContent.description = urlInfo.description
 			extContent.title = urlInfo.title
-			extContent.previewType = 0
+			extContent.previewType = (urlInfo as any).previewType ?? 0
+			extContent.linkPreviewMetadata = (urlInfo as any).linkPreviewMetadata
 
 			const img = urlInfo.highQualityThumbnail
 			if (img) {
@@ -425,12 +479,27 @@ export const generateWAMessageContent = async (
 			}
 		}
 
-		if (options.backgroundColor) {
+		if (options.backgroundColor != null) {
 			extContent.backgroundArgb = await assertColor(options.backgroundColor)
 		}
 
-		if (options.font) {
+		if ((options as any).textColor != null) {
+			extContent.textArgb = await assertColor((options as any).textColor)
+		}
+
+		if (options.font != null) {
 			extContent.font = options.font
+		}
+
+		if ((message as any).socialPreview != null) {
+			if (!extContent.matchedText) {
+				options.logger?.warn?.(
+					'socialPreview rides on a link preview and this message has no matched link, so nothing is attached to anything. ' +
+						'no client reads these fields back out of a message you send, so socialPreview is for decoding what Meta sends, not for drawing your own card'
+				)
+			}
+
+			Object.assign(extContent, buildSocialPreview((message as any).socialPreview))
 		}
 
 		m.extendedTextMessage = extContent
@@ -588,9 +657,24 @@ export const generateWAMessageContent = async (
 			}
 		}
 	} else if (hasNonNullishProperty(message, 'album')) {
-		m.albumMessage = {
-			expectedImageCount: message.album.expectedImageCount,
-			expectedVideoCount: message.album.expectedVideoCount
+		const album = (message as any).album
+		if (Array.isArray(album)) {
+			const expectedVideoCount = album.filter((item: any) => item?.video).length
+			const expectedImageCount = album.filter((item: any) => item?.image).length
+			if (expectedVideoCount + expectedImageCount < 2) {
+				throw new Boom('Minimum provide 2 media to upload album message', { statusCode: 400 })
+			}
+
+			m.albumMessage = {
+				expectedImageCount,
+				expectedVideoCount,
+				...((message as any).caption ? { caption: String((message as any).caption) } : {})
+			}
+		} else {
+			m.albumMessage = {
+				expectedImageCount: album.expectedImageCount,
+				expectedVideoCount: album.expectedVideoCount
+			}
 		}
 	} else if (hasNonNullishProperty(message, 'albumMessage')) {
 		throw new Boom('albumMessage must be sent through sendMessage', { statusCode: 400 })
@@ -762,62 +846,11 @@ export const generateWAMessageContent = async (
 		m = await prepareWAMessageMedia(message, options)
 	}
 
-	if (hasOptionalProperty(message, 'viewOnce') && !!message.viewOnce) {
-		m = { viewOnceMessage: { message: m } }
-	}
+	m = (await applyPostContent(m, message, options, extraHelpers)) as WAMessageContent
 
-	if (
-		(hasOptionalProperty(message, 'mentions') && message.mentions?.length) ||
-		(hasOptionalProperty(message, 'mentionAll') && message.mentionAll)
-	) {
-		const messageType = Object.keys(m)[0]! as Extract<keyof proto.IMessage, MessageWithContextInfo>
-		const key = m[messageType]
-		if (key && 'contextInfo' in key) {
-			key.contextInfo = key.contextInfo || {}
-			if (message.mentions?.length) {
-				key.contextInfo.mentionedJid = message.mentions
-			}
-
-			if (message.mentionAll) {
-				key.contextInfo.nonJidMentions = 1
-			}
-		} else if (key!) {
-			key.contextInfo = {
-				mentionedJid: message.mentions,
-				nonJidMentions: message.mentionAll ? 1 : 0
-			}
-		}
-	}
-
-	if (hasOptionalProperty(message, 'edit')) {
-		m = {
-			protocolMessage: {
-				key: message.edit,
-				editedMessage: m,
-				timestampMs: Date.now(),
-				type: WAProto.Message.ProtocolMessage.Type.MESSAGE_EDIT
-			}
-		}
-	}
-
-	if (hasOptionalProperty(message, 'contextInfo') && !!message.contextInfo) {
-		const messageType = Object.keys(m)[0]! as Extract<keyof proto.IMessage, MessageWithContextInfo>
-		const key = m[messageType]
-		if ('contextInfo' in key! && !!key.contextInfo) {
-			key.contextInfo = { ...key.contextInfo, ...message.contextInfo }
-		} else if (key!) {
-			key.contextInfo = message.contextInfo
-		}
-	}
-
-	if (hasOptionalProperty(message, 'albumParentKey') && !!message.albumParentKey) {
-		m.messageContextInfo = {
-			...m.messageContextInfo,
-			messageAssociation: {
-				associationType: WAProto.MessageAssociation.AssociationType.MEDIA_ALBUM,
-				parentMessageKey: message.albumParentKey
-			}
-		}
+	if (hasOptionalProperty(message, 'messageAssociation' as any) && !!(message as any).messageAssociation) {
+		m.messageContextInfo = m.messageContextInfo || {}
+		m.messageContextInfo.messageAssociation = (message as any).messageAssociation
 	}
 
 	if (shouldIncludeReportingToken(m)) {
@@ -846,15 +879,22 @@ export const generateWAMessageFromContent = (
 	const timestamp = unixTimestampSeconds(options.timestamp)
 	const { quoted, userJid } = options
 
-	if (quoted && !isJidNewsletter(jid)) {
+	const quotedContentType = quoted ? getContentType(normalizeMessageContent(quoted.message)) : undefined
+	if (quoted && (!quotedContentType || !key || !innerMessage[key])) {
+		// an undecrypted/empty quoted message used to throw here and silence every send in that chat
+		(options as { logger?: ILogger }).logger?.warn?.(
+			{ jid, quotedId: quoted.key?.id, quotedContentType, contentType: key },
+			'nothing quotable here, sending without the quote'
+		)
+	} else if (quoted && !isJidNewsletter(jid)) {
 		const participant = quoted.key.fromMe
 			? userJid // TODO: Add support for LIDs
 			: quoted.participant || quoted.key.participant || quoted.key.remoteJid
 
-		let quotedMsg = normalizeMessageContent(quoted.message)!
-		const msgType = getContentType(quotedMsg)!
+		const normalizedQuoted = normalizeMessageContent(quoted.message)!
+		const msgType = quotedContentType!
 		// strip any redundant properties
-		quotedMsg = proto.Message.create({ [msgType]: quotedMsg[msgType] })
+		const quotedMsg = proto.Message.create({ [msgType]: normalizedQuoted[msgType] })
 
 		const quotedContent = quotedMsg[msgType]
 		if (typeof quotedContent === 'object' && quotedContent && 'contextInfo' in quotedContent) {
@@ -936,6 +976,57 @@ export const getContentType = (content: proto.IMessage | undefined) => {
  * @param content
  * @returns
  */
+/** Wrapper messages that carry another message in `.message`; unwrapped by normalizeMessageContent. */
+export const FUTURE_PROOF_MESSAGE_KEYS = [
+	'acp2SettingMessage',
+	'associatedChildMessage',
+	'audioStickerMessage',
+	'botForwardedMessage',
+	'botGroupParticipantMessage',
+	'botInvokeMessage',
+	'botPlatformRegistrationSuccessMessage',
+	'botTaskMessage',
+	'documentWithCaptionMessage',
+	'editedMessage',
+	'ephemeralMessage',
+	'eventCoverImage',
+	'groupMentionedMessage',
+	'groupStatusMentionMessage',
+	'groupStatusMessage',
+	'groupStatusMessageV2',
+	'limitSharingMessage',
+	'lottieStickerMessage',
+	'newsletterAdminProfileMessage',
+	'newsletterAdminProfileMessageV2',
+	'newsletterAdminProfileStatusMessage',
+	'newsletterScheduledMessage',
+	'pollCreationMessageV4',
+	'pollCreationOptionImageMessage',
+	'questionMessage',
+	'questionReplyMessage',
+	'spoilerMessage',
+	'statusAddYours',
+	'statusMentionMessage',
+	'viewOnceMessage',
+	'viewOnceMessageV2',
+	'viewOnceMessageV2Extension'
+] as const
+
+const getFutureProofMessage = (message: WAMessageContent | null | undefined): { message?: WAMessageContent | null } | undefined => {
+	if (!message) {
+		return undefined
+	}
+
+	for (const key of FUTURE_PROOF_MESSAGE_KEYS) {
+		const wrapper = (message as Record<string, any>)[key]
+		if (wrapper) {
+			return wrapper
+		}
+	}
+
+	return undefined
+}
+
 export const normalizeMessageContent = (content: WAMessageContent | null | undefined): WAMessageContent | undefined => {
 	if (!content) {
 		return undefined
@@ -952,20 +1043,6 @@ export const normalizeMessageContent = (content: WAMessageContent | null | undef
 	}
 
 	return content!
-
-	function getFutureProofMessage(message: typeof content) {
-		return (
-			message?.ephemeralMessage ||
-			message?.viewOnceMessage ||
-			message?.documentWithCaptionMessage ||
-			message?.viewOnceMessageV2 ||
-			message?.viewOnceMessageV2Extension ||
-			message?.editedMessage ||
-			message?.associatedChildMessage ||
-			message?.groupStatusMessage ||
-			message?.groupStatusMessageV2
-		)
-	}
 }
 
 /**
@@ -1273,3 +1350,23 @@ export const assertMediaContent = (content: proto.IMessage | null | undefined) =
 
 	return mediaContent
 }
+
+/** True when the content needs a `<biz>` node on the stanza (buttons, lists, templates, native flow, carousels). */
+export const shouldIncludeBizBinaryNode = (message: proto.IMessage) =>
+	!!(
+		message.buttonsMessage ||
+		message.listMessage ||
+		message.templateMessage ||
+		(message.interactiveMessage &&
+			(message.interactiveMessage.nativeFlowMessage ||
+				message.interactiveMessage.carouselMessage?.cards?.some(card => card?.nativeFlowMessage)))
+	)
+
+export {
+	getPollOptionHash,
+	hasValidAlbumMedia,
+	hasValidCarouselHeader,
+	hasValidInteractiveHeader,
+	nativeFlowButtonsViolateConstraints,
+	prepareLinkThumbnail
+} from './messages-extra.js'

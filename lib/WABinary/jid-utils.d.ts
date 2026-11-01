@@ -3,6 +3,7 @@ export declare const OFFICIAL_BIZ_JID = "16505361212@c.us";
 export declare const SERVER_JID = "server@c.us";
 export declare const PSA_WID = "0@c.us";
 export declare const STORIES_JID = "status@broadcast";
+export declare const LOCATION_BROADCAST_JID = "location@broadcast";
 export declare const META_AI_JID = "13135550002@c.us";
 export type JidServer = 'c.us' | 'g.us' | 'broadcast' | 's.whatsapp.net' | 'call' | 'lid' | 'newsletter' | 'bot' | 'hosted' | 'hosted.lid';
 export declare enum WAJIDDomains {
@@ -25,6 +26,7 @@ export declare const jidDecode: (jid: string | undefined) => FullJid | undefined
 /** is the jid a user */
 export declare const areJidsSameUser: (jid1: string | undefined, jid2: string | undefined) => boolean;
 /** is the jid Meta AI */
+export declare const isJidLocationBroadcast: (jid: string | undefined) => jid is "location@broadcast";
 export declare const isJidMetaAI: (jid: string | undefined) => boolean | undefined;
 /** is the jid a PN user */
 export declare const isPnUser: (jid: string | undefined) => boolean | undefined;

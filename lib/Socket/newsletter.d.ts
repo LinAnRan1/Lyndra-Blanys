@@ -1,6 +1,9 @@
 import type { SocketConfig, WAMediaUpload } from '../Types/index.js';
 import type { NewsletterMetadata, NewsletterUpdate } from '../Types/index.js';
+import { toNewsletterServerIds, toNewsletterUserSettingInput } from './newsletter-extended.js';
+export { toNewsletterServerIds, toNewsletterUserSettingInput };
 export declare const makeNewsletterSocket: (config: SocketConfig) => {
+    executeWMexQuery: <T>(variables: Record<string, unknown>, queryId: string, dataPath: string) => Promise<T>;
     newsletterFetchAllSubscribe: () => Promise<unknown>;
     newsletterAction: (jid: string, type: string) => Promise<void>;
     newsletterMultipleFollow: (jids: string) => Promise<void>;
@@ -19,14 +22,18 @@ export declare const makeNewsletterSocket: (config: SocketConfig) => {
     }>;
     newsletterCreate: (name: string, description?: string) => Promise<NewsletterMetadata>;
     newsletterUpdate: (jid: string, updates: NewsletterUpdate) => Promise<unknown>;
-    newsletterSubscribers: (jid: string) => Promise<{
-        subscribers: number;
-    }>;
-    newsletterMetadata: (type: "invite" | "jid", key: string) => Promise<NewsletterMetadata | null>;
+    /**
+     * `newsletterSubscribers(jid)` keeps the classic shape `{ subscribers }`.
+     * Pass an options object (`{ count }`) to get the follower list instead.
+     */
+    newsletterSubscribers: (jid: string, options?: {
+        count?: number;
+    }) => Promise<any>;
+    newsletterMetadata: (type: "invite" | "jid", key: string, options?: Record<string, unknown>) => Promise<NewsletterMetadata | null>;
     newsletterFollow: (jid: string) => Promise<unknown>;
     newsletterUnfollow: (jid: string) => Promise<unknown>;
-    newsletterMute: (jid: string) => Promise<unknown>;
-    newsletterUnmute: (jid: string) => Promise<unknown>;
+    newsletterMute: (jid: string) => any;
+    newsletterUnmute: (jid: string) => any;
     newsletterUpdateName: (jid: string, name: string) => Promise<unknown>;
     newsletterUpdateDescription: (jid: string, description: string) => Promise<unknown>;
     newsletterUpdatePicture: (jid: string, content: WAMediaUpload) => Promise<unknown>;
@@ -40,6 +47,7 @@ export declare const makeNewsletterSocket: (config: SocketConfig) => {
     newsletterChangeOwner: (jid: string, newOwnerJid: string) => Promise<void>;
     newsletterDemote: (jid: string, userJid: string) => Promise<void>;
     newsletterDelete: (jid: string) => Promise<void>;
+    groupQuery: (jid: string, type: "get" | "set", content: import("../index.js").BinaryNode[]) => Promise<any>;
     groupMetadata: (jid: string) => Promise<import("../index.js").GroupMetadata>;
     groupCreate: (subject: string, participants: string[]) => Promise<import("../index.js").GroupMetadata>;
     groupLeave: (id: string) => Promise<void>;
@@ -75,6 +83,16 @@ export declare const makeNewsletterSocket: (config: SocketConfig) => {
         profilePicPrivacyToken: boolean;
         lidTrustedTokenIssueToLid: boolean;
     };
+    fetchProps: ({ full }?: {
+        full?: boolean;
+    }) => Promise<{
+        [_: string]: string;
+    }>;
+    getServerProps: ({ refresh }?: {
+        refresh?: boolean;
+    }) => Promise<{
+        [_: string]: string;
+    }>;
     createCallLink: (type: "audio" | "video", event?: {
         startTime: number;
     }, timeoutMs?: number) => Promise<string | undefined>;
@@ -169,6 +187,7 @@ export declare const makeNewsletterSocket: (config: SocketConfig) => {
     digestKeyBundle: () => Promise<void>;
     rotateSignedPreKey: () => Promise<void>;
     requestPairingCode: (phoneNumber: string, customPairingCode?: string) => Promise<string>;
+    cancelPairingCode: () => boolean;
     updateServerTimeOffset: ({ attrs }: import("../index.js").BinaryNode) => void;
     sendUnifiedSession: () => Promise<void>;
     wamBuffer: import("../index.js").BinaryInfo;
@@ -179,6 +198,18 @@ export declare const makeNewsletterSocket: (config: SocketConfig) => {
         jid: string;
         exists: boolean;
     }[] | undefined>;
+    onWhatsAppUsername: (...usernames: Array<string | {
+        username: string;
+        pin?: string;
+        usernameKey?: string;
+    }>) => Promise<{
+        jid: string;
+        exists: boolean;
+    }[]>;
+    getUsernames: (...jids: Array<string | string[]>) => Promise<{
+        jid: string;
+        username: string;
+    }[]>;
     fetchAccountReachoutTimelock: () => Promise<import("../index.js").ReachoutTimelockState>;
     fetchNewChatMessageCap: () => Promise<import("../index.js").NewChatMessageCapInfo>;
 };

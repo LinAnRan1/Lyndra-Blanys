@@ -54,6 +54,16 @@ export declare function decryptPollVote({ encPayload, encIv }: proto.Message.IPo
  * @param ctx additional info about the event required for decryption
  * @returns event response message
  */
+/** Decrypts the payload of an encrypted message edit (`secretEncryptedMessage` of type MESSAGE_EDIT). */
+export declare function decryptMessageEdit({ encPayload, encIv }: {
+    encPayload: Uint8Array;
+    encIv: Uint8Array;
+}, { originalSenderJid, originalMsgId, editEncKey, editorJid }: {
+    originalSenderJid: string;
+    originalMsgId: string;
+    editEncKey: Uint8Array;
+    editorJid: string;
+}): proto.Message;
 export declare function decryptEventResponse({ encPayload, encIv }: proto.Message.IPollEncValue, { eventCreatorJid, eventMsgId, eventEncKey, responderJid }: EventContext): proto.Message.EventResponseMessage;
 declare const processMessage: (message: WAMessage, { shouldProcessHistoryMsg, placeholderResendCache, ev, creds, signalRepository, keyStore, logger, options, getMessage }: ProcessMessageContext) => Promise<void>;
 export default processMessage;

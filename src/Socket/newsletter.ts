@@ -4,6 +4,7 @@ import { QueryIds, XWAPaths } from '../Types'
 import { generateProfilePicture, getUrlFromDirectPath } from '../Utils/messages-media'
 import { getBinaryNodeChild } from '../WABinary'
 import { makeGroupsSocket } from './groups'
+import { makeNewsletterExtensions, toNewsletterServerIds, toNewsletterUserSettingInput } from './newsletter-extended.js'
 import { executeWMexQuery as genericExecuteWMexQuery } from './mex'
 
 const parseNewsletterCreateResponse = (response: NewsletterCreateResponse): NewsletterMetadata => {
@@ -41,6 +42,8 @@ const parseNewsletterMetadata = (result: unknown): NewsletterMetadata | null => 
 	return null
 }
 
+export { toNewsletterServerIds, toNewsletterUserSettingInput }
+
 export const makeNewsletterSocket = (config: SocketConfig) => {
 	const sock = makeGroupsSocket(config)
 	const { query, generateMessageTag } = sock
@@ -60,8 +63,23 @@ export const makeNewsletterSocket = (config: SocketConfig) => {
 		return executeWMexQuery(variables, QueryIds.UPDATE_METADATA, 'xwa2_newsletter_update')
 	}
 
+	const extended = makeNewsletterExtensions({
+		query,
+		generateMessageTag,
+		executeWMexQuery: executeWMexQuery as (variables: Record<string, unknown>, queryId: string, dataPath: string) => Promise<any>,
+		newsletterUpdate,
+		logger: config.logger
+	}) as Record<string, any>
+	const { newsletterUserSetting, newsletterMetadataDetailed, newsletterFetchMessagesByKey, ...extraMethods } = extended
+
+	const newsletterMetadata = async (type: 'invite' | 'jid', key: string, options: Record<string, unknown> = {}) => {
+		return newsletterMetadataDetailed(type, key, options) as Promise<NewsletterMetadata | null>
+	}
+
 	return {
 		...sock,
+		...extraMethods,
+		executeWMexQuery,
 		newsletterFetchAllSubscribe: async () => {
 			return executeWMexQuery({}, '6388546374527196', 'xwa2_newsletter_subscribed')
 		},
@@ -133,27 +151,29 @@ export const makeNewsletterSocket = (config: SocketConfig) => {
 
 		newsletterUpdate,
 
-		newsletterSubscribers: async (jid: string) => {
-			return executeWMexQuery<{ subscribers: number }>(
-				{ newsletter_id: jid },
-				QueryIds.SUBSCRIBERS,
-				XWAPaths.xwa2_newsletter_subscribers
-			)
+		/**
+		 * `newsletterSubscribers(jid)` keeps the classic shape `{ subscribers }`.
+		 * Pass an options object (`{ count }`) to get the follower list instead.
+		 */
+		newsletterSubscribers: async (jid: string, options?: { count?: number }): Promise<any> => {
+			if (options) {
+				return extended.newsletterFollowers(jid, options).then((response: any) =>
+					(response?.followers?.edges ?? []).map((edge: any) => ({
+						id: edge?.node?.id,
+						phoneNumber: edge?.node?.pn,
+						displayName: edge?.node?.display_name,
+						username: edge?.node?.username_info?.username,
+						role: edge?.role,
+						followTime: edge?.follow_time
+					}))
+				)
+			}
+			const metadata = await newsletterMetadata('jid', jid)
+			const count = (metadata as any)?.thread_metadata?.subscribers_count ?? (metadata as any)?.subscribers
+			return { subscribers: Number(count) || 0 }
 		},
 
-		newsletterMetadata: async (type: 'invite' | 'jid', key: string) => {
-			const variables = {
-				fetch_creation_time: true,
-				fetch_full_image: true,
-				fetch_viewer_metadata: true,
-				input: {
-					key,
-					type: type.toUpperCase()
-				}
-			}
-			const result = await executeWMexQuery<unknown>(variables, QueryIds.METADATA, XWAPaths.xwa2_newsletter_metadata)
-			return parseNewsletterMetadata(result)
-		},
+		newsletterMetadata,
 
 		newsletterFollow: (jid: string) => {
 			return executeWMexQuery({ newsletter_id: jid }, QueryIds.FOLLOW, XWAPaths.xwa2_newsletter_join_v2)
@@ -163,13 +183,9 @@ export const makeNewsletterSocket = (config: SocketConfig) => {
 			return executeWMexQuery({ newsletter_id: jid }, QueryIds.UNFOLLOW, XWAPaths.xwa2_newsletter_leave_v2)
 		},
 
-		newsletterMute: (jid: string) => {
-			return executeWMexQuery({ newsletter_id: jid }, QueryIds.MUTE, XWAPaths.xwa2_newsletter_mute_v2)
-		},
+		newsletterMute: (jid: string) => newsletterUserSetting(jid, 'ADMIN_NOTIFICATIONS', true),
 
-		newsletterUnmute: (jid: string) => {
-			return executeWMexQuery({ newsletter_id: jid }, QueryIds.UNMUTE, XWAPaths.xwa2_newsletter_unmute_v2)
-		},
+		newsletterUnmute: (jid: string) => newsletterUserSetting(jid, 'ADMIN_NOTIFICATIONS', false),
 
 		newsletterUpdateName: async (jid: string, name: string) => {
 			return await newsletterUpdate(jid, { name })

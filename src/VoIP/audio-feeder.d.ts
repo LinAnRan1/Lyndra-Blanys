@@ -1,21 +1,25 @@
+/* Lyndrā-Blanys. Attribution and license terms: see LICENSE and NOTICE.md. */
 export declare class AudioFeeder {
-	#private
-	private readonly sampleRate
-	private readonly channels
-	private readonly framesPerChunk
-	private readonly onChunk
-	private readonly source
-	droppedChunks: number
-	underflowChunks: number
-	bytesProduced: number
-	chunksEmitted: number
-	constructor(
-		sampleRate: number,
-		channels: number,
-		framesPerChunk: number,
-		onChunk: (chunk: Float32Array) => void,
-		source?: string
-	)
-	start: () => void
-	stop: () => void
+    constructor(sampleRate: number, channels: number, framesPerChunk: number, onChunk: (chunk: Float32Array) => void, source?: string, hooks?: {
+        onTrackStart?: (track: string) => void;
+        onTrackEnd?: (track: string) => void;
+        onIdle?: () => void;
+        ffmpegPath?: string;
+    });
+    readonly queuedChunks: number;
+    droppedChunks: number;
+    underflowChunks: number;
+    rebuffers: number;
+    bytesProduced: number;
+    chunksEmitted: number;
+    readonly playlistLength: number;
+    readonly currentTrack: string | null;
+    readonly idle: boolean;
+    tracksPlayed: number;
+    enqueue(source: string | string[]): number;
+    clearPlaylist(): void;
+    skip(): boolean;
+    start(playlist?: string[]): void;
+    stop(): void;
 }
+export default AudioFeeder;

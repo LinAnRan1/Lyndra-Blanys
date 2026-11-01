@@ -111,6 +111,7 @@ export const makeCommunitiesSocket = (config: SocketConfig) => {
 
 	return {
 		...sock,
+		communityQuery,
 		communityMetadata,
 		communityCreate: async (subject: string, body: string) => {
 			const descriptionId = generateMessageID().substring(0, 12)

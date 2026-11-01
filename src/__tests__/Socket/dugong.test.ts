@@ -10,7 +10,7 @@ const makeDugong = () =>
 	)
 
 describe('Dugong', () => {
-	it('detects Ourin interactive and rich payload families', () => {
+	it('detects interactive and rich payload families', () => {
 		const dugong = makeDugong()
 
 		expect(dugong.detectType({ requestPaymentMessage: {} })).toBe('PAYMENT')

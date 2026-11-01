@@ -51,7 +51,8 @@ import {
 	toNumber,
 	unixTimestampSeconds,
 	xmppPreKey,
-	xmppSignedPreKey
+	xmppSignedPreKey,
+	RETRYABLE_ACK_CODES
 } from '../Utils'
 import { makeMutex } from '../Utils/make-mutex'
 import { makeOfflineNodeProcessor, type MessageType } from '../Utils/offline-node-processor'
@@ -108,7 +109,7 @@ function isValidEnforcementType(value: string | undefined): value is ReachoutTim
 }
 
 export const makeMessagesRecvSocket = (config: SocketConfig) => {
-	const { logger, retryRequestDelayMs, maxMsgRetryCount, getMessage, shouldIgnoreJid, enableAutoSessionRecreation } =
+	const { logger, retryRequestDelayMs, maxMsgRetryCount, ackRetryDelayMs, maxAckRetryCount, getMessage, shouldIgnoreJid, enableAutoSessionRecreation } =
 		config
 	const sock = makeMessagesSocket(config)
 	const {
@@ -1845,8 +1846,40 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 		}
 	}
 
+	const ackRetryCounts = new NodeCache<number>({ stdTTL: DEFAULT_CACHE_TTLS.MSG_RETRY, useClones: false })
+	const resendAfterRetryableNack = async (key: WAMessageKey, attempt: number) => {
+		const remembered = (sock as any).outboundResendCache?.get(key.id!) as { jid: string; message: proto.IMessage } | undefined
+		const message = remembered?.message || (await getMessage(key).catch(() => undefined))
+		if (!message) {
+			logger.warn({ msgId: key.id }, 'cannot resend after retryable nack: message is not in the outbound cache')
+			return false
+		}
+
+		await delay(ackRetryDelayMs * attempt)
+		await relayMessage(remembered?.jid || key.remoteJid!, message, { messageId: key.id!, useUserDevicesCache: false })
+		return true
+	}
+
 	const handleBadAck = async ({ attrs }: BinaryNode) => {
 		const key: WAMessageKey = { remoteJid: attrs.from, fromMe: true, id: attrs.id }
+
+		if (!attrs.error) {
+			ackRetryCounts.del(attrs.id!)
+		} else if (maxAckRetryCount > 0 && RETRYABLE_ACK_CODES.has(attrs.error)) {
+			// transient server errors: re-send a bounded number of times
+			const attempt = ((ackRetryCounts.get(attrs.id!) as number | undefined) || 0) + 1
+			ackRetryCounts.set(attrs.id!, attempt)
+			if (attempt <= maxAckRetryCount) {
+				logger.info({ msgId: attrs.id, error: attrs.error, attempt, maxAckRetryCount }, 'retryable nack, resending message')
+				const resent = await resendAfterRetryableNack(key, attempt).catch(error => {
+					logger.warn({ err: error, msgId: attrs.id }, 'resend after retryable nack failed')
+					return false
+				})
+				if (resent) {
+					return
+				}
+			}
+		}
 
 		// WARNING: REFRAIN FROM ENABLING THIS FOR NOW. IT WILL CAUSE A LOOP
 		// // current hypothesis is that if pash is sent in the ack

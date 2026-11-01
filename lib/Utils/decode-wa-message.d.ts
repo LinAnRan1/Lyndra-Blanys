@@ -2,6 +2,21 @@ import type { WAMessage } from '../Types/index.js';
 import type { SignalRepositoryWithLIDStore } from '../Types/Signal.js';
 import { type BinaryNode } from '../WABinary/index.js';
 import type { ILogger } from './logger.js';
+export type NewsletterMessageMeta = {
+    adminProfile?: {
+        id?: string;
+        name?: string;
+        pictureId?: string;
+        pictureDirectPath?: string;
+    };
+    paidPartnership?: boolean;
+    aiContent?: boolean;
+    editTimestamp?: number;
+    originalTimestamp?: number;
+};
+/** Reads the `<meta>` child that channel messages carry (admin profile, paid partnership, AI flag, edit times). */
+export declare const extractNewsletterMessageMeta: (stanza: BinaryNode) => NewsletterMessageMeta | undefined;
+export declare const RETRYABLE_ACK_CODES: Set<string>;
 export declare const getDecryptionJid: (sender: string, repository: SignalRepositoryWithLIDStore) => Promise<string>;
 export declare const NO_MESSAGE_FOUND_ERROR_TEXT = "Message absent from node";
 export declare const MISSING_KEYS_ERROR_TEXT = "Key used already or never filled";

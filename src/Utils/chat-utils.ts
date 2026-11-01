@@ -21,6 +21,7 @@ import {
 } from '../Types/LabelAssociation'
 import { type BinaryNode, getBinaryNodeChild, getBinaryNodeChildren, isJidGroup, jidNormalizedUser } from '../WABinary'
 import { aesDecrypt, aesEncrypt, hmacSign } from './crypto'
+import { GroupHistoryToggleMode } from '../Types/GroupMetadata'
 import { toNumber } from './generics'
 import type { ILogger } from './logger'
 import { LT_HASH_ANTI_TAMPERING } from './lt-hash'
@@ -1011,6 +1012,14 @@ export const processSyncAction = (
 			setting: 'channelsPersonalisedRecommendation',
 			value: action.privacySettingChannelsPersonalisedRecommendationAction
 		})
+	} else if ((action as any)?.groupHistoryToggleAction) {
+		ev.emit('groups.update', [
+			{
+				id,
+				groupHistoryToggleMode:
+					(action as any).groupHistoryToggleAction.groupHistoryToggleMode ?? GroupHistoryToggleMode.DEFAULT
+			}
+		] as any)
 	} else {
 		logger?.debug({ syncAction, id }, 'unprocessable update')
 	}

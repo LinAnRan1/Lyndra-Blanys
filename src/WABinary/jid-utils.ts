@@ -3,6 +3,7 @@ export const OFFICIAL_BIZ_JID = '16505361212@c.us'
 export const SERVER_JID = 'server@c.us'
 export const PSA_WID = '0@c.us'
 export const STORIES_JID = 'status@broadcast'
+export const LOCATION_BROADCAST_JID = 'location@broadcast'
 export const META_AI_JID = '13135550002@c.us'
 
 export type JidServer =
@@ -88,6 +89,7 @@ export const jidDecode = (jid: string | undefined): FullJid | undefined => {
 export const areJidsSameUser = (jid1: string | undefined, jid2: string | undefined) =>
 	jidDecode(jid1)?.user === jidDecode(jid2)?.user
 /** is the jid Meta AI */
+export const isJidLocationBroadcast = (jid: string | undefined) => jid === LOCATION_BROADCAST_JID
 export const isJidMetaAI = (jid: string | undefined) => jid?.endsWith('@bot')
 /** is the jid a PN user */
 export const isPnUser = (jid: string | undefined) => jid?.endsWith('@s.whatsapp.net')

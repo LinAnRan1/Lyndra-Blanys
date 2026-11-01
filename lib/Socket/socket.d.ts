@@ -42,6 +42,7 @@ export declare const makeSocket: (config: SocketConfig) => {
     digestKeyBundle: () => Promise<void>;
     rotateSignedPreKey: () => Promise<void>;
     requestPairingCode: (phoneNumber: string, customPairingCode?: string) => Promise<string>;
+    cancelPairingCode: () => boolean;
     updateServerTimeOffset: ({ attrs }: BinaryNode) => void;
     sendUnifiedSession: () => Promise<void>;
     wamBuffer: BinaryInfo;
@@ -53,6 +54,18 @@ export declare const makeSocket: (config: SocketConfig) => {
         jid: string;
         exists: boolean;
     }[] | undefined>;
+    onWhatsAppUsername: (...usernames: Array<string | {
+        username: string;
+        pin?: string;
+        usernameKey?: string;
+    }>) => Promise<{
+        jid: string;
+        exists: boolean;
+    }[]>;
+    getUsernames: (...jids: Array<string | string[]>) => Promise<{
+        jid: string;
+        username: string;
+    }[]>;
     fetchAccountReachoutTimelock: () => Promise<ReachoutTimelockState>;
     fetchNewChatMessageCap: () => Promise<NewChatMessageCapInfo>;
 };

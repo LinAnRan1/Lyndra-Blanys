@@ -59,7 +59,7 @@ describe('newsletterMultipleFollow', () => {
 		await expect(socket.newsletterMultipleFollow('first@newsletter')).rejects.toBe(error)
 	})
 
-	it('fetches the subscribed newsletter list through the Ourin query', async () => {
+	it('fetches the subscribed newsletter list through the newsletter query', async () => {
 		const response = { subscribed: ['1200@newsletter'] }
 		mockExecuteWMexQuery.mockResolvedValueOnce(response)
 		const socket = makeNewsletterSocket({} as SocketConfig)

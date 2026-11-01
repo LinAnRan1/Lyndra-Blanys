@@ -35,6 +35,17 @@ export type WAGenericMediaMessage =
 	| proto.Message.IAudioMessage
 	| proto.Message.IDocumentMessage
 	| proto.Message.IStickerMessage
+export const AssociationType = proto.MessageAssociation.AssociationType
+export const ButtonHeaderType = proto.Message.ButtonsMessage.HeaderType
+export const ButtonType = proto.Message.ButtonsMessage.Button.Type
+export const CarouselCardType = proto.Message.InteractiveMessage.CarouselMessage.CarouselCardType
+export const ListType = proto.Message.ListMessage.ListType
+export const StatusFont = proto.Message.ExtendedTextMessage.FontType
+export const StatusNotificationType = Object.freeze({
+	...proto.Message.StatusNotificationMessage.StatusNotificationType,
+	STATUS_GROUP_STATUS_REPLY: 4
+})
+export const ProtocolType = proto.Message.ProtocolMessage.Type
 export const WAMessageStubType = proto.WebMessageInfo.StubType
 export const WAMessageStatus = proto.WebMessageInfo.Status
 import type { ILogger } from '../Utils/logger'

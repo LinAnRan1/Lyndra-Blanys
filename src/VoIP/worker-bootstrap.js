@@ -1,28 +1,19 @@
-/**
- * Worker-thread bootstrap for the WhatsApp WASM VoIP engine.
- *
- * Mirrors the browser Web-Worker environment (self/postMessage/babelHelpers/
- * MessagePort) the WASM loader expects, then runs that loader inside a Node
- * `worker_threads` Worker. Function-keyword shims are intentional — the
- * loader inspects `.prototype` and `instanceof` on these.
- *
- * @author ShellTear
- */
-"use strict";
-import { parentPort, workerData } from "worker_threads";
-import * as path from "path";
-import * as fs from "fs";
-import * as crypto from "crypto";
-import * as vm from "vm";
-import { fileURLToPath } from "url";
-import { createRequire } from "module";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+/* Lyndrā-Blanys: calling engine, based on the ShellTear / WhatsApp Web VoIP lineage. See LICENSE and NOTICE.md. */
+import * as worker_threads_1 from 'node:worker_threads';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import * as fs from 'node:fs';
+import * as crypto from 'node:crypto';
+import * as vm from 'node:vm';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+const workerFilePath = fileURLToPath(import.meta.url);
+const workerDirPath = path.dirname(workerFilePath);
 const _require = createRequire(import.meta.url);
-const typedWorkerData = workerData;
+const typedWorkerData = worker_threads_1.workerData;
 if (typeof process === "undefined") {
     global.process = {
-        cwd: () => __dirname || ".",
+        cwd: () => workerDirPath || ".",
         env: {},
         platform: "linux",
         version: "v18.0.0",
@@ -38,7 +29,7 @@ if (typeof process === "undefined") {
     };
 }
 else if (!process.cwd) {
-    process.cwd = () => __dirname || ".";
+    process.cwd = () => workerDirPath || ".";
 }
 global.babelHelpers = {
     extends: function (target) {
@@ -351,27 +342,27 @@ global.importScripts = function (...urls) {
 };
 if (typeof global.location === "undefined") {
     global.location = {
-        href: __filename,
+        href: workerFilePath,
         origin: "file://",
         protocol: "file:",
         host: "",
         hostname: "",
         port: "",
-        pathname: __filename,
+        pathname: workerFilePath,
         search: "",
         hash: "",
     };
 }
 global.postMessage = function (data, transfer) {
-    if (parentPort)
-        parentPort.postMessage(data, transfer);
+    if (worker_threads_1.parentPort)
+        worker_threads_1.parentPort.postMessage(data, transfer);
 };
 const messageListeners = [];
 global.addEventListener = function (type, handler) {
     if (type === "message") {
         messageListeners.push(handler);
-        if (parentPort)
-            parentPort.on("message", (data) => {
+        if (worker_threads_1.parentPort)
+            worker_threads_1.parentPort.on("message", (data) => {
                 handler({ data });
             });
     }
@@ -379,17 +370,23 @@ global.addEventListener = function (type, handler) {
 class SimpleHook {
     listeners = [];
     add = (fn) => { this.listeners.push(fn); return fn; };
-    remove = (fn) => { const idx = this.listeners.indexOf(fn); if (idx >= 0) {
-        this.listeners.splice(idx, 1);
-        return true;
-    } return false; };
-    clear = () => { this.listeners = []; };
-    call = (data) => { for (const fn of this.listeners) {
-        try {
-            fn(data);
+    remove = (fn) => {
+        const idx = this.listeners.indexOf(fn);
+        if (idx >= 0) {
+            this.listeners.splice(idx, 1);
+            return true;
         }
-        catch { }
-    } };
+        return false;
+    };
+    clear = () => { this.listeners = []; };
+    call = (data) => {
+        for (const fn of this.listeners) {
+            try {
+                fn(data);
+            }
+            catch { }
+        }
+    };
 }
 class WorkerSyncedMessagePort {
     $1 = {};
@@ -402,8 +399,8 @@ class WorkerSyncedMessagePort {
     constructor(port, name) {
         this.$2 = port;
         this.name = name;
-        if (parentPort) {
-            parentPort.on("message", (data) => {
+        if (worker_threads_1.parentPort) {
+            worker_threads_1.parentPort.on("message", (data) => {
                 this.onMessageHandler(data);
             });
         }
@@ -433,11 +430,11 @@ class WorkerSyncedMessagePort {
     }
     postMessage(data, transfer) {
         this.onPostMessage.call(data);
-        if (parentPort) {
+        if (worker_threads_1.parentPort) {
             if (transfer)
-                parentPort.postMessage(data, transfer);
+                worker_threads_1.parentPort.postMessage(data, transfer);
             else
-                parentPort.postMessage(data);
+                worker_threads_1.parentPort.postMessage(data);
         }
     }
     addMessageListener(type, fn) {
@@ -520,10 +517,9 @@ class Sha256HMacBuilder {
         return new Uint8Array(this.hmac.digest());
     }
 }
-const WACryptoSha256HmacBuilder = { Sha256HMacBuilder };
 const WAWebVoipPersistentFS = {
     getVoipPersistentDirectoryPath: function () {
-        return "/tmp/voip";
+        return typedWorkerData?.storageDir || path.join(os.tmpdir(), "lyndra-voip");
     },
     initPersistentFS: async function (_module) {
         return Promise.resolve();
@@ -740,20 +736,6 @@ if (typedWorkerData && (typedWorkerData.loaderCode || typedWorkerData.workerModu
         }
         if (!global.self.WhatsAppVoipWasmWorkerCompatibleCallbacks?.loggingCallback) {
             global.self.WhatsAppVoipWasmWorkerCompatibleCallbacks = savedCallbacks;
-            if (global.self !== global.self) {
-                global.self.WhatsAppVoipWasmWorkerCompatibleCallbacks = savedCallbacks;
-            }
-        }
-        if (global.self !== global.self) {
-            if (global.self.WhatsAppVoipWasmWorkerCompatibleCallbacks) {
-                global.self.WhatsAppVoipWasmWorkerCompatibleCallbacks =
-                    global.self.WhatsAppVoipWasmWorkerCompatibleCallbacks;
-            }
-            else if (global.self.WhatsAppVoipWasmWorkerCompatibleCallbacks) {
-                global.self.WhatsAppVoipWasmWorkerCompatibleCallbacks =
-                    global.self.WhatsAppVoipWasmWorkerCompatibleCallbacks;
-            }
-            global.self = global.self;
         }
         wasmLoader = resolveLoaderModule();
         try {
@@ -767,7 +749,7 @@ if (typedWorkerData && (typedWorkerData.loaderCode || typedWorkerData.workerModu
     catch (e) { }
 }
 if (!wasmLoader) {
-    const resourcesPath = typedWorkerData?.resourcesPath || path.join(__dirname, "wasm-resources");
+    const resourcesPath = typedWorkerData?.resourcesPath || path.join(workerDirPath, "wasm-resources");
     const rsrcPath = path.join(resourcesPath, "loader.js");
     if (fs.existsSync(rsrcPath)) {
         try {
@@ -1037,6 +1019,6 @@ e.addMessageListener("waWasmWorkerCompatibleCallback", function (msg) {
     }
     catch (err) { }
 });
-if (parentPort) {
-    parentPort.postMessage({ type: "worker_ready" });
+if (worker_threads_1.parentPort) {
+    worker_threads_1.parentPort.postMessage({ type: "worker_ready" });
 }

@@ -67,10 +67,24 @@ export type SocketConfig = {
     retryRequestDelayMs: number;
     /** max retry count */
     maxMsgRetryCount: number;
+    /** base delay before re-sending a message the server nacked with a retryable code (408/429/500/503) */
+    ackRetryDelayMs: number;
+    /** how many times a retryable nack is re-sent; 0 turns it off */
+    maxAckRetryCount: number;
+    /** cache of recently sent messages used to re-send after a retryable nack */
+    outboundResendCache?: CacheStore;
     /** time to wait for the generation of the next QR in ms */
     qrTimeout?: number;
     /** provide an auth state object to maintain the auth state */
     auth: AuthenticationState;
+    /** max listeners on the shared event bus (default 64) */
+    maxEventListeners?: number;
+    /** carry the sender key distribution message inline in group sends once a sender key exists (default true) */
+    inlineSenderKeyDistribution?: boolean;
+    /** turn on AnchorGuard, the anti force-close guard (default false). Sets `sock.anchorGuard` */
+    AnchorGuard?: boolean;
+    /** options for AnchorGuard, see docs/ANCHORGUARD.md */
+    AnchorGuardConfig?: import('../AnchorGuard/index.js').AnchorGuardConfig;
     /** manage history processing with this control; by default will sync up everything */
     shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => boolean;
     /** transaction capability options for SignalKeyStore */

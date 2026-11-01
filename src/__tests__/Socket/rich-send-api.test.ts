@@ -59,8 +59,8 @@ describe('getButtonType', () => {
 	})
 })
 
-describe('ourin rich-send API surface', () => {
-	it('exposes every ourin-baileys send* helper on the socket', () => {
+describe('rich-send API surface', () => {
+	it('exposes every send* helper on the socket', () => {
 		const sock = makeMessagesSocket({
 			logger: { child: () => ({}), debug() {}, info() {}, warn() {}, error() {}, trace() {} },
 			options: {},

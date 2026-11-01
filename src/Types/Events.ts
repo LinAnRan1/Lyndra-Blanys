@@ -176,4 +176,13 @@ export interface BaileysEventEmitter {
 	off<T extends keyof BaileysEventMap>(event: T, listener: (arg: BaileysEventMap[T]) => void): void
 	removeAllListeners<T extends keyof BaileysEventMap>(event: T): void
 	emit<T extends keyof BaileysEventMap>(event: T, arg: BaileysEventMap[T]): boolean
+	removeListener<T extends keyof BaileysEventMap>(event: T, listener: (arg: BaileysEventMap[T]) => void): void
+	listeners(event: keyof BaileysEventMap | string): Function[]
+	rawListeners(event: keyof BaileysEventMap | string): Function[]
+	eventNames(): (string | symbol)[]
+	once<T extends keyof BaileysEventMap>(event: T, listener: (arg: BaileysEventMap[T]) => void): void
+	addListener<T extends keyof BaileysEventMap>(event: T, listener: (arg: BaileysEventMap[T]) => void): void
+	setMaxListeners(count: number): void
+	getMaxListeners(): number
+	listenerCount(event: keyof BaileysEventMap | string): number
 }

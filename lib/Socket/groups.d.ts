@@ -3,6 +3,7 @@ import { proto } from '../../WAProto/index.js';
 import type { GroupMetadata, ParticipantAction, SocketConfig, WAMessageKey } from '../Types/index.js';
 import { type BinaryNode } from '../WABinary/index.js';
 export declare const makeGroupsSocket: (config: SocketConfig) => {
+    groupQuery: (jid: string, type: "get" | "set", content: BinaryNode[]) => Promise<any>;
     groupMetadata: (jid: string) => Promise<GroupMetadata>;
     groupCreate: (subject: string, participants: string[]) => Promise<GroupMetadata>;
     groupLeave: (id: string) => Promise<void>;
@@ -49,6 +50,16 @@ export declare const makeGroupsSocket: (config: SocketConfig) => {
         profilePicPrivacyToken: boolean;
         lidTrustedTokenIssueToLid: boolean;
     };
+    fetchProps: ({ full }?: {
+        full?: boolean;
+    }) => Promise<{
+        [_: string]: string;
+    }>;
+    getServerProps: ({ refresh }?: {
+        refresh?: boolean;
+    }) => Promise<{
+        [_: string]: string;
+    }>;
     createCallLink: (type: "audio" | "video", event?: {
         startTime: number;
     }, timeoutMs?: number) => Promise<string | undefined>;
@@ -143,6 +154,7 @@ export declare const makeGroupsSocket: (config: SocketConfig) => {
     digestKeyBundle: () => Promise<void>;
     rotateSignedPreKey: () => Promise<void>;
     requestPairingCode: (phoneNumber: string, customPairingCode?: string) => Promise<string>;
+    cancelPairingCode: () => boolean;
     updateServerTimeOffset: ({ attrs }: BinaryNode) => void;
     sendUnifiedSession: () => Promise<void>;
     wamBuffer: import("../index.js").BinaryInfo;
@@ -153,6 +165,18 @@ export declare const makeGroupsSocket: (config: SocketConfig) => {
         jid: string;
         exists: boolean;
     }[] | undefined>;
+    onWhatsAppUsername: (...usernames: Array<string | {
+        username: string;
+        pin?: string;
+        usernameKey?: string;
+    }>) => Promise<{
+        jid: string;
+        exists: boolean;
+    }[]>;
+    getUsernames: (...jids: Array<string | string[]>) => Promise<{
+        jid: string;
+        username: string;
+    }[]>;
     fetchAccountReachoutTimelock: () => Promise<import("../Types/index.js").ReachoutTimelockState>;
     fetchNewChatMessageCap: () => Promise<import("../Types/index.js").NewChatMessageCapInfo>;
 };

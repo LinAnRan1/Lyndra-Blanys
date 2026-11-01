@@ -1,5 +1,19 @@
 export class SignalingBridge {
     constructor(config: any);
+    _sock: any;
+    _log: any;
+    setSocket: (socket: any) => void;
+    _baileys: any;
+    _voip: any;
+    _observedTcTokens: Map<any, any>;
+    _pendingTcTokenWaiters: Map<any, any>;
+    _ensuredSignalSessions: Map<any, any>;
+    _remoteDevicePeerByCallId: Map<any, any>;
+    _remoteObfuscatedPeerByCallId: Map<any, any>;
+    _remoteXmppRoutePeerByCallId: Map<any, any>;
+    _incomingCallPeerById: Map<any, any>;
+    _outgoingSignalingQueue: Promise<undefined>;
+    _incomingSignalingQueue: Promise<undefined>;
     attachEngine: (voip: any) => void;
     init: () => Promise<void>;
     sendSignaling: (peerJid: any, callId: any, xmlPayload: any) => void;
@@ -7,11 +21,51 @@ export class SignalingBridge {
     processIncomingReceipt: (node: any, voip: any, activeCallId: any) => void;
     requestTcToken: (jid: any) => Promise<any>;
     ensureTcToken: (...jids: any[]) => Promise<any>;
-    discoverPeerDevices: (peerLidJid: any) => Promise<any[]>;
+    discoverPeerDevices: (peerJid: any) => Promise<any[]>;
     ensureSessionsForPeers: (jids: any) => Promise<void>;
-    resolveLid: (pnJid: any) => Promise<any>;
+    resolveLid: (jid: any) => Promise<any>;
     issueTcToken: (jid: any) => Promise<boolean>;
     getRemoteDeviceJid: (callId: any) => any;
-    #private;
+    _resolveLidViaUSync: (pnJid: any) => Promise<any>;
+    _normalizeLid: (value: any) => any;
+    _getStoredLidForPn: (pnJid: any) => Promise<any>;
+    _storeLidPnMapping: (lidJid: any, pnJid: any) => Promise<void>;
+    _doSendSignaling: (peerJid: any, callId: any, xmlPayload: any) => Promise<void>;
+    _sendCallStanza: (routeTo: any, voipNode: any, signalingTag: any, effectivePeerJid: any, callbackPeerJid: any) => Promise<void>;
+    _doProcessIncomingCall: (node: any, voip: any, activeCallId: any) => Promise<void>;
+    _doProcessIncomingReceipt: (node: any, voip: any, activeCallId: any) => Promise<void>;
+    _maybeDecryptEnc: (voipNode: any, peerJid: any) => Promise<any>;
+    _encryptCallKey: (targetJid: any, rawCallKey: any, count: any) => Promise<{
+        encNode: {
+            tag: string;
+            attrs: {
+                v: string;
+                type: any;
+                count: string;
+            };
+            content: Buffer<any>;
+        };
+        shouldIncludeDeviceIdentity: boolean;
+    }>;
+    _ensureSignalSessions: (jids: any, refresh: any) => Promise<void>;
+    _appendDeviceIdentity: (voipNode: any) => void;
+    _toBareJid: (jid: any) => any;
+    _toCallDeviceJid: (jid: any) => any;
+    _toPrimaryDeviceJid: (jid: any) => string | undefined;
+    _hasConcreteDevice: (jid: any) => boolean;
+    _preferDeviceRouteJid: (...candidates: any[]) => any;
+    _preferOrderedRouteJid: (...candidates: any[]) => any;
+    _pickConcreteRouteHint: (...candidates: any[]) => string;
+    _resolveOutboundPeerJid: (callId: any, wasmPeerJid: any) => any;
+    _expandSignalSessionTargets: (jids: any) => any[];
+    _normalizeStartCallPeerList: (jids: any) => any[];
+    _findTcTokenNodes: (node: any) => any[];
+    _processPrivacyTokenNotification: (node: any) => void;
+    _getTcTokenCandidateJids: (jid: any) => Promise<any[]>;
+    _storeTcToken: (jid: any, token: any, timestamp?: string) => Promise<Buffer<any>>;
+    _waitForTcToken: (jid: any, timeoutMs?: number) => Promise<any>;
+    _rememberTcToken: (jid: any, token: any, timestamp?: string) => void;
+    _getTcToken: (jid: any) => Promise<Buffer<any> | undefined>;
 }
+export default SignalingBridge;
 //# sourceMappingURL=signaling.d.ts.map

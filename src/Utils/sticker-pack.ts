@@ -40,7 +40,7 @@ const normalizeSticker = (entry: StickerPackContent['stickers'][number], index: 
 
 export const makeStickerPack = ({
 	name,
-	publisher = 'Ourin AI',
+	publisher = 'Lyndrā-Blanys',
 	description = '',
 	packId,
 	stickers = [],

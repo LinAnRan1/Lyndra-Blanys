@@ -6,6 +6,24 @@ import type { LabelActionBody } from './Label.js';
 import type { ChatLabelAssociationActionBody } from './LabelAssociation.js';
 import type { MessageLabelAssociationActionBody } from './LabelAssociation.js';
 import type { MinimalMessage, WAMessageKey } from './Message.js';
+export declare const SPAM_FLOWS: Readonly<{
+    readonly Block: "block_dialog";
+    readonly OverflowMenuBlock: "overflow_menu_block";
+    readonly OverflowMenuReport: "overflow_menu_report";
+    readonly MediaViewer: "media_viewer";
+    readonly MessageMenu: "message_menu";
+    readonly CommunityHome: "community_home";
+    readonly AccountInfoReport: "account_info_report";
+    readonly GroupInfoReport: "group_info_report";
+    readonly GroupSpamBannerReport: "group_spam_banner_report";
+    readonly OneToOneChatSpamBannerReport: "1_1_spam_banner_report";
+    readonly BizSpamBannerBlock: "biz_spam_banner_block";
+    readonly ChatListBlock: "chat_list_block";
+    readonly NotificationBlock: "notification_block";
+    readonly StatusPostReport: "status_post_report";
+    readonly NewsletterInfoReport: "newsletter_info_report";
+}>;
+export type SpamFlow = (typeof SPAM_FLOWS)[keyof typeof SPAM_FLOWS];
 /** privacy settings in WhatsApp Web */
 export type WAPrivacyValue = 'all' | 'contacts' | 'contact_blacklist' | 'none';
 export type WAPrivacyOnlineValue = 'all' | 'match_last_seen';

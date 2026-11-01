@@ -1,21 +1,12 @@
-var _a;
-/**
- * WhatsApp VoIP WASM engine.
- *
- * Loads the WhatsApp Web VoIP WASM stack inside a Node.js `vm.Context`,
- * spawns a 20-thread `worker_threads` pool to mirror the browser's pthread
- * model, and exposes a callback-based JS bridge. Audio-only (no video).
- *
- * @author ShellTear
- */
-import * as vm from "node:vm";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { randomFillSync } from "node:crypto";
-import { Worker } from "node:worker_threads";
-import { fileURLToPath } from "node:url";
-const voipFilePath = fileURLToPath(import.meta.url);
-const voipDirectoryPath = path.dirname(voipFilePath);
+/* Lyndrā-Blanys: calling engine, based on the ShellTear / WhatsApp Web VoIP lineage. See LICENSE and NOTICE.md. */
+import * as vm from 'node:vm';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { tmpdir } from 'node:os';
+import { Worker } from 'node:worker_threads';
+import { randomFillSync } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+const voipDir = path.dirname(fileURLToPath(import.meta.url));
 const CALL_WASM_AB_PROPS_JSON = process.env.CALL_WASM_AB_PROPS_JSON ?? "";
 const PTHREAD_POOL_SIZE = 20;
 const VOIP_READY_TIMEOUT_MS = 15_000;
@@ -55,9 +46,15 @@ const filterWorkerStderr = (chunk) => {
         process.stderr.write(chunk);
     }
 };
+const normalizeVideoCaptureConfig = (data) => ({
+    width: Math.trunc(Number(data?.width ?? data?.frame_width ?? data?.frameWidth ?? 0)) || 640,
+    height: Math.trunc(Number(data?.height ?? data?.frame_height ?? data?.frameHeight ?? 0)) || 480,
+    fps: Math.trunc(Number(data?.fps ?? data?.frame_rate ?? data?.frameRate ?? data?.max_framerate ?? 0)) || 24,
+    raw: data
+});
 const resolveWorkerScriptPath = () => {
-    const compiled = path.join(voipDirectoryPath, "worker-bootstrap.js");
-    return fs.existsSync(compiled) ? compiled : path.join(voipDirectoryPath, "worker-bootstrap.mts");
+    const compiled = path.join(voipDir, "worker-bootstrap.js");
+    return fs.existsSync(compiled) ? compiled : path.join(voipDir, "worker-bootstrap.mts");
 };
 class NodeWorkerMessagePort {
     #listeners = new Map();
@@ -191,19 +188,20 @@ class NodeWorkerMessagePort {
     };
 }
 export class WasmEngine {
+    #jsWorkers = new Set();
     static #globalCallbackListeners = new Map();
     static #globalCallbacksRegistered = false;
     static registerGlobalCallbackListener = (callbackName, handler) => {
         const key = `callback:${callbackName}`;
-        let set = _a.#globalCallbackListeners.get(key);
+        let set = WasmEngine.#globalCallbackListeners.get(key);
         if (!set) {
             set = new Set();
-            _a.#globalCallbackListeners.set(key, set);
+            WasmEngine.#globalCallbackListeners.set(key, set);
         }
         set.add(handler);
     };
     static notifyGlobalCallbackListeners = (callbackName, data) => {
-        const set = _a.#globalCallbackListeners.get(`callback:${callbackName}`);
+        const set = WasmEngine.#globalCallbackListeners.get(`callback:${callbackName}`);
         if (!set)
             return;
         for (const handler of set) {
@@ -238,12 +236,15 @@ export class WasmEngine {
     constructor(config = {}) {
         const basePath = config.resourcesPath
             ? (path.isAbsolute(config.resourcesPath) ? config.resourcesPath : path.resolve(process.cwd(), config.resourcesPath))
-            : path.resolve(voipDirectoryPath, "..");
+            : path.resolve(voipDir, "..");
         const wasmPath = config.wasmPath
             ? (path.isAbsolute(config.wasmPath) ? config.wasmPath : path.resolve(process.cwd(), config.wasmPath))
             : path.join(basePath, "assets", "wasm", "whatsapp.wasm");
         this.#config = {
             ...config,
+            storageDir: config.storageDir
+                ? (path.isAbsolute(config.storageDir) ? config.storageDir : path.resolve(process.cwd(), config.storageDir))
+                : path.join(tmpdir(), "lyndra-voip"),
             wasmPath,
             resourcesPath: basePath,
             enableLogs: config.enableLogs ?? true,
@@ -259,7 +260,7 @@ export class WasmEngine {
     initialize = async () => {
         if (this.#initialized)
             throw new Error("WasmEngine already initialized");
-        const voipStorageDir = "/tmp/voip";
+        const voipStorageDir = this.#config.storageDir;
         try {
             if (!fs.existsSync(voipStorageDir))
                 fs.mkdirSync(voipStorageDir, { recursive: true });
@@ -268,7 +269,7 @@ export class WasmEngine {
         const loaderFile = path.join(this.#config.resourcesPath, "assets", "wasm", "loader.js");
         const workerFile = path.join(this.#config.resourcesPath, "assets", "wasm", "worker-modules.js");
         if (!this.#config.wasmBinary && !fs.existsSync(this.#config.wasmPath)) {
-            throw new Error(`WASM file not found: ${this.#config.wasmPath}`);
+            throw new Error(`WhatsApp VoIP WASM not found at ${this.#config.wasmPath}. Point wasmPath at it, hand the bytes over as wasmBinary, or put whatsapp.wasm, loader.js and worker-modules.js under <resourcesPath>/assets/wasm/.`);
         }
         const wasmBuffer = this.#config.wasmBinary
             ? Buffer.from(this.#config.wasmBinary)
@@ -276,9 +277,6 @@ export class WasmEngine {
         const diskWorkerCode = fs.existsSync(workerFile) ? fs.readFileSync(workerFile, "utf8") : "";
         this.#workerModulesCode = this.#config.workerModulesCode ?? diskWorkerCode;
         const workerBundleHasLoader = typeof this.#workerModulesCode === "string" && /WAWebVoipWebWasmLoader/.test(this.#workerModulesCode);
-        // Skip the on-disk loader.js if the worker bundle already has a loader —
-        // the standalone loader.js is older and would clobber the freshly fetched
-        // bindings inside worker-modules.js.
         this.#loaderCode = this.#config.loaderCode ??
             (workerBundleHasLoader ? "" : fs.existsSync(loaderFile) ? fs.readFileSync(loaderFile, "utf8") : "");
         if (!this.#loaderCode && !this.#workerModulesCode) {
@@ -288,8 +286,10 @@ export class WasmEngine {
         this.#wasmMemory = memory;
         this.#wasmModule = await WebAssembly.compile(wasmBuffer);
         this.#vmContext = this.#createVMContext(memory);
-        const runModuleCode = (code) => { if (code)
-            vm.runInContext(code, this.#vmContext); };
+        const runModuleCode = (code) => {
+            if (code)
+                vm.runInContext(code, this.#vmContext);
+        };
         runModuleCode(this.#workerModulesCode);
         runModuleCode(this.#loaderCode);
         this.#vmContext.WAWebVoipWebWasmWorkerResource = this.#requireModule("WAWebVoipWebWasmWorkerResource");
@@ -315,7 +315,7 @@ export class WasmEngine {
         if (typeof wasmLoader !== "function") {
             throw new Error(`No compatible WASM loader found. Tried: ${loaderModuleNames.join(", ")}`);
         }
-        if (!_a.#globalCallbacksRegistered)
+        if (!WasmEngine.#globalCallbacksRegistered)
             this.#registerGlobalCallbacks();
         await this.#initPThreadPool();
         const workersLoadingPromise = this.#loadWasmModuleToAllWorkers();
@@ -433,6 +433,38 @@ export class WasmEngine {
             tcToken?.delete?.();
         }
     };
+    startGroupCall = (options) => {
+        this.#ensureInitialized();
+        const pnUserJids = this.#makeStringList(options.pnUserJids ?? []);
+        const lidUserJids = this.#makeStringList(options.lidUserJids ?? []);
+        const deviceJidsCsv = this.#makeStringList(options.deviceJidsCsv ?? []);
+        try {
+            return this.#instance.startVoipGroupCall(pnUserJids, lidUserJids, deviceJidsCsv, options.callId, options.isVideo ?? false, options.groupJid, options.isLightWeight ?? false, options.scheduleId ?? "", options.chatName ?? "", options.chatIcon ?? "", options.callFromUI ?? 0, options.lobbyEntryType ?? 0, options.username ?? "");
+        }
+        finally {
+            pnUserJids?.delete?.();
+            lidUserJids?.delete?.();
+            deviceJidsCsv?.delete?.();
+        }
+    };
+    joinOngoingCall = (options) => {
+        this.#ensureInitialized();
+        const pnUserJids = this.#makeStringList(options.pnUserJids ?? []);
+        const lidUserJids = this.#makeStringList(options.lidUserJids ?? []);
+        const deviceJidsCsv = this.#makeStringList(options.deviceJidsCsv ?? []);
+        try {
+            return this.#instance.joinVoipOngoingCall(options.callId, options.callCreatorJid, options.initialPeerJid ?? options.callCreatorJid, pnUserJids, lidUserJids, deviceJidsCsv, options.isVideo ?? false, options.groupJid ?? "", options.initialGroupTransactionId ?? 0, options.callCreatorIsNotContact ?? false, options.callLinkCode ?? "", options.isLightweight ?? false, options.scheduledId ?? "", options.joinAndAccept ?? true, options.chatName ?? "", options.lobbyEntryType ?? 0, options.isDeviceSwitch ?? false);
+        }
+        finally {
+            pnUserJids?.delete?.();
+            lidUserJids?.delete?.();
+            deviceJidsCsv?.delete?.();
+        }
+    };
+    acceptCall = (isMicEnabled = true, isCameraEnabled = false) => {
+        this.#ensureInitialized();
+        return this.#instance.acceptCall(isMicEnabled, isCameraEnabled);
+    };
     endCall = (reason = 0, sendTerminate = true) => {
         this.#ensureInitialized();
         this.#instance.endCall(reason, sendTerminate);
@@ -517,6 +549,47 @@ export class WasmEngine {
         this.#ensureInitialized();
         this.#instance.updateIceRtt?.(rttMs, relayIp, relayPort);
     };
+    startScreenShare = () => {
+        this.#ensureInitialized();
+        return this.#instance.startScreenShare?.();
+    };
+    stopScreenShare = () => {
+        this.#ensureInitialized();
+        return this.#instance.stopScreenShare?.();
+    };
+    sendVideoFrame = (frame, width, height, fps, format = 0, orientation = 0, useDesktopCapture = false) => {
+        if (!this.#jsWorkers.size || !frame?.byteLength || !width || !height) {
+            return false;
+        }
+        const timestamp = Date.now();
+        for (const worker of this.#jsWorkers) {
+            const copy = frame.buffer.slice(frame.byteOffset, frame.byteOffset + frame.byteLength);
+            try {
+                worker.postMessage({
+                    type: "jsWorkerCmd",
+                    jsWorkerCmd: "pushRawVideoFrame",
+                    useDesktopCapture,
+                    frameBuffer: copy,
+                    width,
+                    height,
+                    fps,
+                    format,
+                    orientation,
+                    timestamp
+                }, [copy]);
+            }
+            catch { }
+        }
+        return true;
+    };
+    releaseVideoFrameBuffer = () => {
+        for (const worker of this.#jsWorkers) {
+            try {
+                worker.postMessage({ type: "jsWorkerCmd", jsWorkerCmd: "releaseRawVideoFrameBuffer" });
+            }
+            catch { }
+        }
+    };
     sendAudioData = (data, ptr) => {
         this.#ensureInitialized();
         if (!data || data.length === 0 || !ptr)
@@ -524,7 +597,7 @@ export class WasmEngine {
         if (typeof this.#instance.onAudioDataFromJs !== "function")
             return;
         try {
-            const heapF32 = this.#instance.GROWABLE_HEAP_F32?.() ?? this.#instance.HEAPF32;
+            const heapF32 = this.#instance.GROWABLE_HEAP_F32?.();
             if (!heapF32)
                 return;
             const index = Math.floor(ptr / 4);
@@ -543,7 +616,6 @@ export class WasmEngine {
         this.#ensureInitialized();
         this.#instance._free(ptr);
     };
-    // ─── private ──────────────────────────────────────────────────────────────
     #ensureInitialized = () => {
         if (!this.#initialized || !this.#instance) {
             throw new Error("WasmEngine not initialized. Call initialize() first.");
@@ -647,8 +719,6 @@ export class WasmEngine {
             aigc_version: 0,
             call_admin_version: 0,
             vid_stream_pause_resume_jb_reset_threshold_ms: 0,
-            // Opus: max bandwidth WB (16 kHz). FB (48 kHz) needs native audio device
-            // hooks not available in this JS-only WASM context.
             opus_max_bandwidth: 1103, // OPUS_BANDWIDTH_WIDEBAND
         };
         const boolProps = {
@@ -707,6 +777,7 @@ export class WasmEngine {
                     loaderCode: this.#loaderCode,
                     loaderModuleName: this.#config.loaderModuleName,
                     resourcesPath: this.#config.resourcesPath,
+                    storageDir: this.#config.storageDir,
                     enableLogs: this.#config.enableLogs,
                 },
             });
@@ -748,7 +819,7 @@ export class WasmEngine {
     };
     #registerGlobalCallbacks = () => {
         const callbacks = this.#config.callbacks ?? {};
-        _a.registerGlobalCallbackListener("loggingCallback", (data) => {
+        WasmEngine.registerGlobalCallbackListener("loggingCallback", (data) => {
             if (!this.#config.enableLogs)
                 return;
             const level = data?.level;
@@ -757,7 +828,7 @@ export class WasmEngine {
             callbacks.onLog?.(mapped, msg);
         });
         if (callbacks.onAudioCaptureInit) {
-            _a.registerGlobalCallbackListener("initCaptureDriverJS", (data) => {
+            WasmEngine.registerGlobalCallbackListener("initCaptureDriverJS", (data) => {
                 callbacks.onAudioCaptureInit({
                     sampleRate: data?.sample_rate ?? data?.sampleRate,
                     channels: data?.channels,
@@ -766,10 +837,15 @@ export class WasmEngine {
                 });
             });
         }
-        _a.registerGlobalCallbackListener("startCaptureJS", () => callbacks.onAudioCaptureStart?.());
-        _a.registerGlobalCallbackListener("stopCaptureJS", () => callbacks.onAudioCaptureStop?.());
+        WasmEngine.registerGlobalCallbackListener("startVideoCaptureJS", (data) => callbacks.onVideoCaptureStart?.(normalizeVideoCaptureConfig(data)));
+        WasmEngine.registerGlobalCallbackListener("stopVideoCaptureJS", () => callbacks.onVideoCaptureStop?.());
+        WasmEngine.registerGlobalCallbackListener("videoFrameConsumed", () => callbacks.onVideoFrameConsumed?.());
+        WasmEngine.registerGlobalCallbackListener("startDesktopCaptureJS", (data) => callbacks.onDesktopCaptureStart?.(normalizeVideoCaptureConfig(data)));
+        WasmEngine.registerGlobalCallbackListener("stopDesktopCaptureJS", () => callbacks.onDesktopCaptureStop?.());
+        WasmEngine.registerGlobalCallbackListener("startCaptureJS", () => callbacks.onAudioCaptureStart?.());
+        WasmEngine.registerGlobalCallbackListener("stopCaptureJS", () => callbacks.onAudioCaptureStop?.());
         if (callbacks.onAudioPlaybackInit) {
-            _a.registerGlobalCallbackListener("initPlaybackDriverJS", (data) => {
+            WasmEngine.registerGlobalCallbackListener("initPlaybackDriverJS", (data) => {
                 callbacks.onAudioPlaybackInit({
                     sampleRate: data?.sample_rate ?? data?.sampleRate,
                     channels: data?.channels,
@@ -778,16 +854,16 @@ export class WasmEngine {
                 });
             });
         }
-        _a.registerGlobalCallbackListener("startPlaybackJS", () => {
+        WasmEngine.registerGlobalCallbackListener("startPlaybackJS", () => {
             callbacks.onAudioPlaybackStart?.();
             this.#startAudioPlaybackLoop();
         });
-        _a.registerGlobalCallbackListener("stopPlaybackJS", () => {
+        WasmEngine.registerGlobalCallbackListener("stopPlaybackJS", () => {
             this.#stopAudioPlaybackLoop();
             callbacks.onAudioPlaybackStop?.();
         });
         if (callbacks.onSignalingXmpp) {
-            _a.registerGlobalCallbackListener("onSignalingXmpp", (data) => {
+            WasmEngine.registerGlobalCallbackListener("onSignalingXmpp", (data) => {
                 const peerJid = data.peerJid ?? data.args?.peerJid;
                 const callId = data.callId ?? data.args?.callId;
                 let xmlPayload = data.xmlPayload ?? data.args?.xmlPayload;
@@ -801,12 +877,12 @@ export class WasmEngine {
             });
         }
         if (callbacks.onCallEvent) {
-            _a.registerGlobalCallbackListener("onCallEvent", (data) => {
+            WasmEngine.registerGlobalCallbackListener("onCallEvent", (data) => {
                 callbacks.onCallEvent(data.eventType, data.eventDataJson);
             });
         }
         if (callbacks.sendDataToRelay) {
-            _a.registerGlobalCallbackListener("sendDataToRelay", (data) => {
+            WasmEngine.registerGlobalCallbackListener("sendDataToRelay", (data) => {
                 let relayData = data.data ?? data.args?.data;
                 const ip = data.ip ?? data.args?.ip;
                 const portNum = data.port ?? data.args?.port;
@@ -828,7 +904,7 @@ export class WasmEngine {
                 return relayData.byteLength;
             });
         }
-        _a.#globalCallbacksRegistered = true;
+        WasmEngine.#globalCallbacksRegistered = true;
     };
     #requireModule = (name) => {
         const preDefinedModules = {
@@ -851,11 +927,14 @@ export class WasmEngine {
                             loaderCode: this.#loaderCode,
                             loaderModuleName: this.#config.loaderModuleName,
                             resourcesPath: this.#config.resourcesPath,
+                            storageDir: this.#config.storageDir,
                             enableLogs: this.#config.enableLogs,
                         },
                     });
                     worker.stdout?.on("data", () => { });
                     worker.stderr?.on("data", filterWorkerStderr);
+                    this.#jsWorkers.add(worker);
+                    worker.on("exit", () => this.#jsWorkers.delete(worker));
                     return worker;
                 },
             },
@@ -990,14 +1069,29 @@ export class WasmEngine {
                 callbacks.onAudioPlaybackStop?.();
                 return 0;
             },
-            startVideoCaptureJS: () => 0,
-            stopVideoCaptureJS: () => 0,
-            startDesktopCaptureJS: () => 0,
-            stopDesktopCaptureJS: () => 0,
+            startVideoCaptureJS: (data) => {
+                callbacks.onVideoCaptureStart?.(normalizeVideoCaptureConfig(data));
+                return 0;
+            },
+            stopVideoCaptureJS: () => {
+                callbacks.onVideoCaptureStop?.();
+                return 0;
+            },
+            startDesktopCaptureJS: (data) => {
+                callbacks.onDesktopCaptureStart?.(normalizeVideoCaptureConfig(data));
+                return 0;
+            },
+            stopDesktopCaptureJS: () => {
+                callbacks.onDesktopCaptureStop?.();
+                return 0;
+            },
             dataChannelStateCallback: () => 0,
             getBrowserAudioProcessingStatus: () => 7,
             getBweModelPath: () => null,
-            videoFrameConsumed: () => 0,
+            videoFrameConsumed: () => {
+                callbacks.onVideoFrameConsumed?.();
+                return 0;
+            },
             cryptoHkdfExtractWithSaltAndExpand: (data) => {
                 const key = toByteArray(data?.key_);
                 const salt = data?.salt_ ? toByteArray(data.salt_) : new Uint8Array(0);
@@ -1012,7 +1106,7 @@ export class WasmEngine {
             },
             isParticipantKnownContact: () => true,
             getPersistentDirectoryPath: () => {
-                const dir = "/tmp/voip";
+                const dir = this.#config.storageDir;
                 try {
                     if (!fs.existsSync(dir))
                         fs.mkdirSync(dir, { recursive: true });
@@ -1210,5 +1304,5 @@ export class WasmEngine {
         return atomicsWrapper;
     };
 }
-_a = WasmEngine;
+
 export default WasmEngine;

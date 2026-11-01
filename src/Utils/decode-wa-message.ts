@@ -19,6 +19,81 @@ import {
 import { unpadRandomMax16 } from './generics'
 import type { ILogger } from './logger'
 
+const findChildByTag = (node: BinaryNode | undefined, tag: string): BinaryNode | undefined => {
+	if (!node || !Array.isArray(node.content)) {
+		return undefined
+	}
+
+	return (node.content as BinaryNode[]).find(child => child?.tag === tag)
+}
+
+const readIntAttr = (attrs: Record<string, string> | undefined, key: string): number | undefined => {
+	const raw = attrs?.[key]
+	if (raw === undefined || raw === null || raw === '') {
+		return undefined
+	}
+
+	const parsed = Number.parseInt(String(raw), 10)
+	return Number.isFinite(parsed) ? parsed : undefined
+}
+
+export type NewsletterMessageMeta = {
+	adminProfile?: { id?: string; name?: string; pictureId?: string; pictureDirectPath?: string }
+	paidPartnership?: boolean
+	aiContent?: boolean
+	editTimestamp?: number
+	originalTimestamp?: number
+}
+
+/** Reads the `<meta>` child that channel messages carry (admin profile, paid partnership, AI flag, edit times). */
+export const extractNewsletterMessageMeta = (stanza: BinaryNode): NewsletterMessageMeta | undefined => {
+	const meta = findChildByTag(stanza, 'meta')
+	if (!meta) {
+		return undefined
+	}
+
+	const result: NewsletterMessageMeta = {}
+	const adminProfile = findChildByTag(meta, 'admin_profile')
+	if (adminProfile) {
+		const name = findChildByTag(adminProfile, 'name')
+		const picture = findChildByTag(adminProfile, 'picture')
+		const content = name?.content
+		result.adminProfile = {
+			id: adminProfile.attrs?.id,
+			name:
+				typeof content === 'string'
+					? content
+					: content instanceof Uint8Array
+						? Buffer.from(content).toString('utf-8')
+						: undefined,
+			pictureId: picture?.attrs?.id,
+			pictureDirectPath: picture?.attrs?.direct_path
+		}
+	}
+
+	if (findChildByTag(meta, 'paid_partnership')) {
+		result.paidPartnership = true
+	}
+
+	if (findChildByTag(meta, 'ai_content')) {
+		result.aiContent = true
+	}
+
+	const editTimestamp = readIntAttr(meta.attrs, 'msg_edit_t')
+	if (editTimestamp !== undefined) {
+		result.editTimestamp = editTimestamp
+	}
+
+	const originalTimestamp = readIntAttr(meta.attrs, 'original_msg_t')
+	if (originalTimestamp !== undefined) {
+		result.originalTimestamp = originalTimestamp
+	}
+
+	return Object.keys(result).length ? result : undefined
+}
+
+export const RETRYABLE_ACK_CODES = new Set(['408', '429', '500', '503'])
+
 export const getDecryptionJid = async (sender: string, repository: SignalRepositoryWithLIDStore): Promise<string> => {
 	if (isLidUser(sender) || isHostedLidUser(sender)) {
 		return sender
@@ -248,6 +323,21 @@ export function decodeMessageNode(stanza: BinaryNode, meId: string, meLid: strin
 		messageTimestamp: +stanza.attrs.t!,
 		pushName: pushname,
 		broadcast: isJidBroadcast(from)
+	}
+
+	if (msgType === 'newsletter') {
+		const meta = extractNewsletterMessageMeta(stanza)
+		if (meta) {
+			;(fullMessage as WAMessage & { newsletterMeta?: NewsletterMessageMeta }).newsletterMeta = meta
+			if (meta.adminProfile?.name) {
+				fullMessage.pushName = fullMessage.pushName || meta.adminProfile.name
+			}
+		}
+
+		if (stanza.attrs.is_sender === 'true') {
+			fullMessage.key.fromMe = true
+			;(fullMessage.key as WAMessageKey & { isNewsletterSender?: boolean }).isNewsletterSender = true
+		}
 	}
 
 	if (key.fromMe) {

@@ -1,4 +1,6 @@
 import type { AuthenticationState } from '../Types/index.js';
+/** how many auth files currently hold a write lock (useful to confirm nothing is stuck) */
+export declare const countAuthFileLocks: () => number;
 /**
  * stores the full authentication state in a single folder.
  * Far more efficient than singlefileauthstate

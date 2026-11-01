@@ -9,6 +9,8 @@ export type ParticipantAction = 'add' | 'remove' | 'promote' | 'demote' | 'modif
 export type RequestJoinAction = 'created' | 'revoked' | 'rejected';
 export type RequestJoinMethod = 'invite_link' | 'linked_group_join' | 'non_admin_add' | undefined;
 export interface GroupMetadata {
+    /** group history sharing toggle (0 default, 1 on, 2 off) */
+    groupHistoryToggleMode?: GroupHistoryToggleMode;
     id: string;
     notify?: string;
     /** group uses 'lid' or 'pn' to send messages */
@@ -67,5 +69,10 @@ export interface GroupModificationResponse {
     participants?: {
         [key: string]: {};
     };
+}
+export declare enum GroupHistoryToggleMode {
+    DEFAULT = 0,
+    ON = 1,
+    OFF = 2
 }
 //# sourceMappingURL=GroupMetadata.d.ts.map

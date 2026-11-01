@@ -33,6 +33,22 @@ export declare const DEFAULT_CACHE_TTLS: {
     MSG_RETRY: number;
     CALL_OFFER: number;
     USER_DEVICES: number;
+    OUTBOUND_RESEND: number;
+};
+export declare const LIBRARY_NAME = "Lyndr\u0101-Blanys";
+export declare const DONATE_URL = "https://github.com/LinAnRan1/lin-baileys";
+export declare const BIZ_BOT_SUPPORT_PAYLOAD = "{\"version\":1,\"is_ai_message\":true,\"should_upload_client_logs\":false,\"should_show_system_message\":false,\"ticket_id\":\"7004947587700716\",\"citation_items\":[],\"ticket_locale\":\"us\"}";
+export declare const MAX_OUTBOUND_RESEND_ENTRIES = 512;
+export declare const MEMBER_LABEL_MAX_LENGTH = 30;
+export declare const DEFAULT_CACHE_MAX_KEYS = 20000;
+export declare const PAIRING_RESPONSE_GRACE_MS = 30000;
+export declare const NEWSLETTER_MEDIA_PATH_MAP: {
+    readonly image: "/newsletter/newsletter-image";
+    readonly video: "/newsletter/newsletter-video";
+    readonly document: "/newsletter/newsletter-document";
+    readonly audio: "/newsletter/newsletter-audio";
+    readonly sticker: "/newsletter/newsletter-image";
+    readonly 'thumbnail-link': "/newsletter/newsletter-thumbnail-link";
 };
 export declare const DEFAULT_CONNECTION_CONFIG: SocketConfig;
 export declare const MEDIA_PATH_MAP: {

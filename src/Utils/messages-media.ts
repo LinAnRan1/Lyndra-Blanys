@@ -1,5 +1,5 @@
 import { Boom } from '@hapi/boom'
-import { exec } from 'child_process'
+import { spawn } from 'child_process'
 import * as Crypto from 'crypto'
 import { once } from 'events'
 import { createReadStream, createWriteStream, promises as fs, WriteStream } from 'fs'
@@ -31,7 +31,7 @@ import type { ILogger } from './logger'
 
 const getTmpFilesDirectory = () => tmpdir()
 
-const getImageProcessingLibrary = async () => {
+export const getImageProcessingLibrary = async () => {
 	//@ts-ignore
 	const [jimp, sharp] = await Promise.all([import('jimp').catch(() => {}), import('sharp').catch(() => {})])
 
@@ -114,23 +114,45 @@ export async function getMediaKeys(
 	}
 }
 
-/** Extracts video thumb using FFMPEG */
-const extractVideoThumb = async (
-	path: string,
-	destPath: string,
-	time: string,
-	size: { width: number; height: number }
-) =>
-	new Promise<void>((resolve, reject) => {
-		const cmd = `ffmpeg -ss ${time} -i ${path} -y -vf scale=${size.width}:-1 -vframes 1 -f image2 ${destPath}`
-		exec(cmd, err => {
-			if (err) {
-				reject(err)
-			} else {
-				resolve()
-			}
-		})
-	})
+/** Extracts one frame of a video as a JPEG buffer using FFMPEG (no shell involved). */
+export const extractVideoThumb = async (path: string, time: string, size: { width: number; height: number }) => {
+	const ffmpeg = spawn(
+		'ffmpeg',
+		[
+			'-loglevel',
+			'error',
+			'-ss',
+			String(time),
+			'-i',
+			path,
+			'-an',
+			'-sn',
+			'-dn',
+			'-map_metadata',
+			'-1',
+			'-vf',
+			`scale=${size.width}:-1`,
+			'-frames:v',
+			'1',
+			'-c:v',
+			'mjpeg',
+			'-f',
+			'image2pipe',
+			'pipe:1'
+		],
+		{ stdio: ['ignore', 'pipe', 'pipe'] }
+	)
+	const stdout: Buffer[] = []
+	const stderrChunks: Buffer[] = []
+	ffmpeg.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
+	ffmpeg.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
+	const [code] = await once(ffmpeg, 'close')
+	if (code !== 0) {
+		throw new Boom(`FFmpeg failed (code ${code}):\n` + Buffer.concat(stderrChunks).toString('utf8'))
+	}
+
+	return Buffer.concat(stdout)
+}
 
 export const extractImageThumb = async (bufferOrFilePath: Readable | Buffer | string, width = 32) => {
 	// TODO: Move entirely to sharp, removing jimp as it supports readable streams
@@ -344,13 +366,9 @@ export async function generateThumbnail(
 			}
 		}
 	} else if (mediaType === 'video') {
-		const imgFilename = join(getTmpFilesDirectory(), generateMessageIDV2() + '.jpg')
 		try {
-			await extractVideoThumb(file, imgFilename, '00:00:00', { width: 32, height: 32 })
-			const buff = await fs.readFile(imgFilename)
+			const buff = await extractVideoThumb(file, '00:00:00', { width: 32, height: 32 })
 			thumbnail = buff.toString('base64')
-
-			await fs.unlink(imgFilename)
 		} catch (err) {
 			options.logger?.debug('could not generate video thumb: ' + err)
 		}

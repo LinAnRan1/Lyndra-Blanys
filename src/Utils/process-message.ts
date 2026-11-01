@@ -266,6 +266,30 @@ export function decryptPollVote(
  * @param ctx additional info about the event required for decryption
  * @returns event response message
  */
+/** Decrypts the payload of an encrypted message edit (`secretEncryptedMessage` of type MESSAGE_EDIT). */
+export function decryptMessageEdit(
+	{ encPayload, encIv }: { encPayload: Uint8Array; encIv: Uint8Array },
+	{
+		originalSenderJid,
+		originalMsgId,
+		editEncKey,
+		editorJid
+	}: { originalSenderJid: string; originalMsgId: string; editEncKey: Uint8Array; editorJid: string }
+) {
+	const toBinary = (txt: string) => Buffer.from(txt)
+	const sign = Buffer.concat([
+		toBinary(originalMsgId),
+		toBinary(originalSenderJid),
+		toBinary(editorJid),
+		toBinary('Message Edit'),
+		new Uint8Array([1])
+	])
+	const key0 = hmacSign(editEncKey, new Uint8Array(32), 'sha256')
+	const decKey = hmacSign(sign, key0, 'sha256')
+	const decrypted = aesDecryptGCM(encPayload, decKey, encIv, Buffer.alloc(0))
+	return proto.Message.decode(decrypted)
+}
+
 export function decryptEventResponse(
 	{ encPayload, encIv }: proto.Message.IPollEncValue,
 	{ eventCreatorJid, eventMsgId, eventEncKey, responderJid }: EventContext
@@ -287,6 +311,73 @@ export function decryptEventResponse(
 
 	function toBinary(txt: string) {
 		return Buffer.from(txt)
+	}
+}
+
+const resolveMessageEditAuthor = async (
+	key: proto.IMessageKey | undefined,
+	meId: string,
+	lidMapping: { getPNForLID: (lid: string) => Promise<string | null> }
+) => {
+	if (!key) {
+		return ''
+	}
+
+	const k = key as proto.IMessageKey & { participantAlt?: string; remoteJidAlt?: string }
+	const rawJid = k.fromMe
+		? k.participantAlt || k.participant || meId
+		: k.participantAlt || k.participant || k.remoteJidAlt || k.remoteJid
+	const normalized = jidNormalizedUser(rawJid ?? undefined)
+	if (!normalized) {
+		return ''
+	}
+
+	if (!isLidUser(normalized)) {
+		return normalized
+	}
+
+	const pn = await lidMapping.getPNForLID(normalized)
+	return jidNormalizedUser(pn ?? undefined)
+}
+
+const buildEditUpdate = (args: {
+	encPayload: Uint8Array
+	encIv: Uint8Array
+	editEncKey: Uint8Array
+	originalSenderJid: string
+	originalMsgId: string
+	editorJid: string
+	targetKey: proto.IMessageKey
+	fallbackTimestamp: number
+	logger?: ILogger
+}) => {
+	const editedInner = decryptMessageEdit(
+		{ encPayload: args.encPayload, encIv: args.encIv },
+		{
+			editEncKey: args.editEncKey,
+			originalSenderJid: args.originalSenderJid,
+			originalMsgId: args.originalMsgId,
+			editorJid: args.editorJid
+		}
+	)
+	const editProtocol = editedInner.protocolMessage
+	const innerEdited = editProtocol?.editedMessage
+	if (!innerEdited) {
+		args.logger?.warn(
+			{ targetKey: args.targetKey },
+			'decrypted MESSAGE_EDIT plaintext had no protocolMessage.editedMessage — skipping update'
+		)
+		return null
+	}
+
+	return {
+		key: { ...args.targetKey },
+		update: {
+			message: { editedMessage: { message: innerEdited } },
+			messageTimestamp: editProtocol?.timestampMs
+				? Math.floor(toNumber(editProtocol.timestampMs) / 1000)
+				: args.fallbackTimestamp
+		}
 	}
 }
 
@@ -623,6 +714,72 @@ const processMessage = async (
 			}
 		} else {
 			logger?.warn({ creationMsgKey }, 'event creation message not found, cannot decrypt response')
+		}
+	} else if (
+		content?.secretEncryptedMessage &&
+		content.secretEncryptedMessage.secretEncType === proto.Message.SecretEncryptedMessage.SecretEncType.MESSAGE_EDIT
+	) {
+		const secEnc = content.secretEncryptedMessage
+		const targetKey = secEnc.targetMessageKey as proto.IMessageKey & { remoteJidAlt?: string; participantAlt?: string }
+		const targetId = typeof targetKey?.id === 'string' ? targetKey.id.trim() : ''
+		const targetRemoteJid = targetKey?.remoteJid || targetKey?.remoteJidAlt
+		if (!targetKey || !targetId || !targetRemoteJid) {
+			logger?.warn({ targetKey }, 'message edit: incomplete targetMessageKey — cannot decrypt')
+			return
+		}
+
+		const lookupTargetKey = {
+			...targetKey,
+			remoteJid: targetKey.remoteJid || targetKey.remoteJidAlt,
+			participant: targetKey.participant || targetKey.participantAlt
+		}
+		const targetMsg = await getMessage(lookupTargetKey)
+		if (!targetMsg) {
+			logger?.warn({ targetKey }, 'original message not found in store, cannot decrypt secretEncryptedMessage edit')
+			return
+		}
+
+		try {
+			const meIdNormalised = jidNormalizedUser(meId)
+			const editEncKey = targetMsg?.messageContextInfo?.messageSecret
+			if (!editEncKey?.length) {
+				logger?.warn({ targetKey }, 'message edit: missing messageSecret on original message — cannot decrypt')
+				return
+			}
+
+			const originalSenderJid = await resolveMessageEditAuthor(targetKey, meIdNormalised, signalRepository.lidMapping)
+			if (!originalSenderJid) {
+				logger?.warn({ targetKey }, 'message edit: original sender JID unavailable — cannot decrypt')
+				return
+			}
+
+			const editorJid = await resolveMessageEditAuthor(message.key, meIdNormalised, signalRepository.lidMapping)
+			if (!editorJid) {
+				logger?.warn({ key: message.key, targetKey }, 'message edit: editor JID unavailable — cannot decrypt')
+				return
+			}
+
+			if (!secEnc.encPayload?.length || !secEnc.encIv?.length) {
+				logger?.warn({ targetKey }, 'message edit: encrypted payload or IV missing — cannot decrypt')
+				return
+			}
+
+			const update = buildEditUpdate({
+				editEncKey,
+				encPayload: secEnc.encPayload,
+				encIv: secEnc.encIv,
+				originalSenderJid,
+				originalMsgId: targetId,
+				editorJid,
+				targetKey,
+				fallbackTimestamp: toNumber(message.messageTimestamp),
+				logger
+			})
+			if (update) {
+				ev.emit('messages.update', [update as any])
+			}
+		} catch (err) {
+			logger?.warn({ err, targetKey }, 'failed to decrypt secretEncryptedMessage MESSAGE_EDIT')
 		}
 	} else if (message.messageStubType) {
 		const jid = message.key?.remoteJid!

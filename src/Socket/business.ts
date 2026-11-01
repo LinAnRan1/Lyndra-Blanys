@@ -418,7 +418,7 @@ export const makeBusinessSocket = (config: SocketConfig) => {
 		productDelete,
 		productUpdate,
 		updateBussinesProfile,
-		/** Correctly-spelled alias of `updateBussinesProfile` (kept for ourin-baileys compatibility). */
+		/** Correctly-spelled alias of `updateBussinesProfile` (kept for backward compatibility). */
 		updateBusinessProfile: updateBussinesProfile,
 		updateCoverPhoto,
 		removeCoverPhoto

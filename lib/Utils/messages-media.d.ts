@@ -7,6 +7,64 @@ import { type MediaType } from '../Defaults/index.js';
 import type { DownloadableMessage, MediaConnInfo, MediaDecryptionKeyInfo, SocketConfig, WAMediaUpload, WAMediaUploadFunction, WAMessageContent, WAMessageKey } from '../Types/index.js';
 import { type BinaryNode } from '../WABinary/index.js';
 import type { ILogger } from './logger.js';
+export declare const getImageProcessingLibrary: () => Promise<{
+    sharp: {
+        default: typeof import("sharp");
+        cache(options?: boolean | import("sharp").CacheOptions): import("sharp").CacheResult;
+        concurrency(concurrency?: number): number;
+        counters(): import("sharp").SharpCounters;
+        simd(enable?: boolean): boolean;
+        block(options: {
+            operation: string[];
+        }): void;
+        unblock(options: {
+            operation: string[];
+        }): void;
+        format: import("sharp").FormatEnum;
+        versions: {
+            aom?: string | undefined;
+            archive?: string | undefined;
+            cairo?: string | undefined;
+            cgif?: string | undefined;
+            exif?: string | undefined;
+            expat?: string | undefined;
+            ffi?: string | undefined;
+            fontconfig?: string | undefined;
+            freetype?: string | undefined;
+            fribidi?: string | undefined;
+            glib?: string | undefined;
+            harfbuzz?: string | undefined;
+            heif?: string | undefined;
+            highway?: string | undefined;
+            imagequant?: string | undefined;
+            lcms?: string | undefined;
+            mozjpeg?: string | undefined;
+            pango?: string | undefined;
+            pixman?: string | undefined;
+            png?: string | undefined;
+            "proxy-libintl"?: string | undefined;
+            rsvg?: string | undefined;
+            sharp: string;
+            spng?: string | undefined;
+            tiff?: string | undefined;
+            vips: string;
+            webp?: string | undefined;
+            xml?: string | undefined;
+            "zlib-ng"?: string | undefined;
+        };
+        interpolators: import("sharp").Interpolators;
+        queue: NodeJS.EventEmitter;
+        gravity: import("sharp").GravityEnum;
+        strategy: import("sharp").StrategyEnum;
+        kernel: import("sharp").KernelEnum;
+        fit: import("sharp").FitEnum;
+        bool: import("sharp").BoolEnum;
+    };
+    jimp?: undefined;
+} | {
+    jimp: typeof import("jimp");
+    sharp?: undefined;
+}>;
 export declare const hkdfInfoKey: (type: MediaType) => string;
 export declare const getRawMediaUploadData: (media: WAMediaUpload, mediaType: MediaType, logger?: ILogger) => Promise<{
     filePath: string;
@@ -15,6 +73,11 @@ export declare const getRawMediaUploadData: (media: WAMediaUpload, mediaType: Me
 }>;
 /** generates all the keys required to encrypt/decrypt & sign a media message */
 export declare function getMediaKeys(buffer: Uint8Array | string | null | undefined, mediaType: MediaType): Promise<MediaDecryptionKeyInfo>;
+/** Extracts one frame of a video as a JPEG buffer using FFMPEG (no shell involved). */
+export declare const extractVideoThumb: (path: string, time: string, size: {
+    width: number;
+    height: number;
+}) => Promise<Buffer<ArrayBuffer>>;
 export declare const extractImageThumb: (bufferOrFilePath: Readable | Buffer | string, width?: number) => Promise<{
     buffer: any;
     original: {

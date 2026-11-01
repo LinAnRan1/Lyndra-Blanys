@@ -7,6 +7,25 @@ import type { ChatLabelAssociationActionBody } from './LabelAssociation'
 import type { MessageLabelAssociationActionBody } from './LabelAssociation'
 import type { MinimalMessage, WAMessageKey } from './Message'
 
+export const SPAM_FLOWS = Object.freeze({
+    Block: 'block_dialog',
+    OverflowMenuBlock: 'overflow_menu_block',
+    OverflowMenuReport: 'overflow_menu_report',
+    MediaViewer: 'media_viewer',
+    MessageMenu: 'message_menu',
+    CommunityHome: 'community_home',
+    AccountInfoReport: 'account_info_report',
+    GroupInfoReport: 'group_info_report',
+    GroupSpamBannerReport: 'group_spam_banner_report',
+    OneToOneChatSpamBannerReport: '1_1_spam_banner_report',
+    BizSpamBannerBlock: 'biz_spam_banner_block',
+    ChatListBlock: 'chat_list_block',
+    NotificationBlock: 'notification_block',
+    StatusPostReport: 'status_post_report',
+    NewsletterInfoReport: 'newsletter_info_report'
+} as const)
+export type SpamFlow = (typeof SPAM_FLOWS)[keyof typeof SPAM_FLOWS]
+
 /** privacy settings in WhatsApp Web */
 export type WAPrivacyValue = 'all' | 'contacts' | 'contact_blacklist' | 'none'
 

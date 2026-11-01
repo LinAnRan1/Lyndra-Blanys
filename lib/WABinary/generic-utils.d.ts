@@ -14,4 +14,18 @@ export declare const getBinaryNodeMessages: ({ content }: BinaryNode) => proto.W
 export declare function binaryNodeToString(node: BinaryNode | BinaryNode['content'], i?: number): string;
 export declare const getBinaryNodeFilter: (nodes: BinaryNode[] | undefined) => boolean;
 export declare const getAdditionalNode: (name: string) => BinaryNode[];
+type BizSourceMessage = {
+    buttonsMessage?: unknown;
+    listMessage?: unknown;
+    interactiveMessage?: {
+        nativeFlowMessage?: {
+            buttons?: Array<{
+                name?: string | null;
+            }> | null;
+        } | null;
+    } | null;
+};
+/** Builds the `<biz>` node that goes with a buttons / list / native-flow message. */
+export declare const getBizBinaryNode: (message: BizSourceMessage) => BinaryNode;
+export {};
 //# sourceMappingURL=generic-utils.d.ts.map

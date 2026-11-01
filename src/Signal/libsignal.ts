@@ -5,7 +5,7 @@ import { PreKeyWhisperMessage } from 'libsignal/src/protobufs'
 import { LRUCache } from 'lru-cache'
 import type { LIDMapping, SignalAuthState, SignalKeyStoreWithTransaction } from '../Types'
 import type { SignalRepositoryWithLIDStore } from '../Types/Signal'
-import { generateSignalPubKey } from '../Utils'
+import { generateSignalPubKey } from '../Utils/crypto'
 import type { ILogger } from '../Utils/logger'
 import {
 	isHostedLidUser,

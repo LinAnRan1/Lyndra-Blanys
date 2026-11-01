@@ -31,6 +31,7 @@ type BaileysBufferableEventEmitter = BaileysEventEmitter & {
  * The event buffer logically consolidates different events into a single event
  * making the data processing more efficient.
  */
-export declare const makeEventBuffer: (logger: ILogger) => BaileysBufferableEventEmitter;
+export declare const DEFAULT_MAX_EVENT_LISTENERS = 64;
+export declare const makeEventBuffer: (logger: ILogger, maxListeners?: number) => BaileysBufferableEventEmitter;
 export {};
 //# sourceMappingURL=event-buffer.d.ts.map
