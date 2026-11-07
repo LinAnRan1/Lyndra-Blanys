@@ -83,6 +83,8 @@ export type SocketConfig = {
 	inlineSenderKeyDistribution?: boolean
 	/** turn on AnchorGuard, the anti force-close guard (default false). Sets `sock.anchorGuard` */
 	AnchorGuard?: boolean
+	/** print errors from socket methods, decrypt failures and connection closes to the console (default false). `true` or options; sets `sock.bugLogs`, see docs/BUGLOGS.md */
+	bugLogs?: boolean | import('../BugLogs/index.js').BugLogsConfig
 	/** options for AnchorGuard, see docs/ANCHORGUARD.md */
 	AnchorGuardConfig?: import('../AnchorGuard/index.js').AnchorGuardConfig
 	/** manage history processing with this control; by default will sync up everything */

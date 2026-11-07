@@ -24,3 +24,10 @@ Lyndrā-Blanys does not claim any of this third-party work as original.
 
 WhatsApp is a trademark of its owner. This project is not affiliated with, endorsed or
 authorized by WhatsApp or Meta.
+
+## Build and runtime support
+
+Lyndrā-Blanys ships an ESM build (`lib/*.js`) and a self-contained CommonJS bundle
+(`lib/cjs/index.cjs`, produced by esbuild from the ESM build) and supports Node.js 20 and newer.
+Dependencies are kept at their newest releases that still run on Node 20: `@cacheable/node-cache`
+3.0.x, `music-metadata` 11 and `p-queue` 9 are held at those lines because later majors need Node 22+.

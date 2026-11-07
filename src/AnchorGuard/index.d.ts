@@ -56,11 +56,16 @@ export interface AnchorGuardConfig {
 	onDetect?: ((event: Record<string, unknown>) => void | Promise<void>) | null
 	proto?: typeof proto | null
 	logger?: any
+	/** print AnchorGuard warnings (flagged messages, kicks, blocks) through the logger. Default true */
+	logs?: boolean
 	ownJid?: string
 }
 
 export interface AntiBugGuard {
 	detect: (message: unknown) => DetectResult
+	/** turn AnchorGuard log output on or off at runtime; returns the new state */
+	setLogs: (on: boolean) => boolean
+	readonly logsEnabled: boolean
 	stop: () => void
 }
 

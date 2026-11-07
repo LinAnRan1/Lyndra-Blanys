@@ -16,6 +16,8 @@ const sock = makeWASocket({
 
 sock.anchorGuard.detect(message) // { flagged, reasons }
 sock.anchorGuard.stop()          // lepas listener dan kembalikan sendMessage asli
+sock.anchorGuard.setLogs(false)  // matikan atau nyalakan log kapan saja
+sock.anchorGuard.logsEnabled     // status log saat ini
 ```
 
 Dipakai terpisah (tanpa opsi socket): `createAntiBugGuard(sock, config)`, `detectBug(message, limits)`,
@@ -47,6 +49,7 @@ AnchorGuardConfig: { blockOnBug: false, kickOnBug: false, guardGroupAdds: false 
 | `guardGroupAdds`, `autoKickBadAdds` | lihat kode | cabut nomor buruk yang ditambahkan ke grup |
 | `metaAiNumbers` | lihat kode | anggap nomor berawalan `1313555` sebagai buruk |
 | `addWatchlist` | `[]` | daftar JID tambahan yang dicabut saat ditambahkan |
+| `logs` | `true` | cetak peringatan AnchorGuard lewat logger. `false` membisukannya, penjaganya tetap bekerja |
 | `onDetect` | none | callback `{ direction, reasons, ... }` |
 
 Batas deteksi (`maxText`, `maxMentions`, `maxButtons`, `maxDepth`, `maxInvisibleRun`, dan lainnya) ada di
@@ -54,7 +57,7 @@ Batas deteksi (`maxText`, `maxMentions`, `maxButtons`, `maxDepth`, `maxInvisible
 
 ## Pengujian
 
-`test/port/anchorguard.test.js` (9 pengujian, jalan dengan `npm run test:port`) memakai socket palsu untuk
+`test/port/anchorguard.test.js` (10 pengujian, jalan dengan `npm run test:port`) memakai socket palsu untuk
 memeriksa: bentuk payload yang ditandai dan yang lolos, blok pengiriman keluar, `stop()`, pencabutan + kick + blokir
 saat bot admin, hapus-untuk-diri saat bukan admin, konfigurasi konservatif tanpa tindakan terhadap orang,
 eskalasi burst, penambahan nomor Meta AI/watchlist, `selfOnly`, serta integrasi `makeWASocket` (mati secara default).

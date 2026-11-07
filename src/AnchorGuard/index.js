@@ -304,7 +304,12 @@ export const createAntiBugGuard = (sock, options = {}) => {
         onDetect: null,
         proto: null,
         logger: sock?.logger,
+        logs: true,
         ...options
+    };
+    let logsOn = config.logs !== false;
+    const warn = (...args) => {
+        if (logsOn) config.logger?.warn?.(...args);
     };
     const ownJid = config.ownJid || sock?.user?.id;
     const ownNumbers = [sock?.user?.id, sock?.user?.lid, config.ownJid].filter(Boolean);
@@ -330,7 +335,7 @@ export const createAntiBugGuard = (sock, options = {}) => {
             admin = !!(me && (me.admin === 'admin' || me.admin === 'superadmin'));
         }
         catch (error) {
-            config.logger?.warn?.({ error: error.message }, 'anti-bug admin check failed');
+            warn({ error: error.message }, 'anti-bug admin check failed');
         }
         adminCache.set(groupJid, { admin, ts: Date.now() });
         return admin;
@@ -341,7 +346,7 @@ export const createAntiBugGuard = (sock, options = {}) => {
             await sock.sendMessage(jid, { delete: key });
         }
         catch (error) {
-            config.logger?.warn?.({ error: error.message }, 'anti-bug revoke failed');
+            warn({ error: error.message }, 'anti-bug revoke failed');
         }
     };
 
@@ -353,7 +358,7 @@ export const createAntiBugGuard = (sock, options = {}) => {
             await sock.chatModify({ deleteForMe: { key, timestamp: Date.now(), deleteMedia: false } }, jid);
         }
         catch (error) {
-            config.logger?.warn?.({ error: error.message }, 'anti-bug delete-for-me failed');
+            warn({ error: error.message }, 'anti-bug delete-for-me failed');
         }
     };
 
@@ -366,7 +371,7 @@ export const createAntiBugGuard = (sock, options = {}) => {
             return true;
         }
         catch (error) {
-            config.logger?.warn?.({ error: error.message }, 'anti-bug kick failed');
+            warn({ error: error.message }, 'anti-bug kick failed');
             return false;
         }
     };
@@ -379,7 +384,7 @@ export const createAntiBugGuard = (sock, options = {}) => {
             await sock.updateBlockStatus(sender, 'block');
         }
         catch (error) {
-            config.logger?.warn?.({ error: error.message }, 'anti-bug block failed');
+            warn({ error: error.message }, 'anti-bug block failed');
         }
     };
 
@@ -414,7 +419,7 @@ export const createAntiBugGuard = (sock, options = {}) => {
             return;
         }
         escalated.add(sender);
-        config.logger?.warn?.({ sender, jid }, 'anti-bug burst escalation');
+        warn({ sender, jid }, 'anti-bug burst escalation');
         await blockSender(sender);
         if (isGroupJid(jid)) {
             const removed = config.kickOnBug ? await kickParticipant(jid, sender) : false;
@@ -423,7 +428,7 @@ export const createAntiBugGuard = (sock, options = {}) => {
                     await sock.groupLeave(jid);
                 }
                 catch (error) {
-                    config.logger?.warn?.({ error: error.message }, 'anti-bug leave failed');
+                    warn({ error: error.message }, 'anti-bug leave failed');
                 }
             }
         }
@@ -457,13 +462,13 @@ export const createAntiBugGuard = (sock, options = {}) => {
         if (!bad.length) {
             return;
         }
-        config.logger?.warn?.({ id, author, bad }, 'anti-bug bad group add');
+        warn({ id, author, bad }, 'anti-bug bad group add');
         if (config.autoKickBadAdds && typeof sock.groupParticipantsUpdate === 'function') {
             try {
                 await sock.groupParticipantsUpdate(id, bad, 'remove');
             }
             catch (error) {
-                config.logger?.warn?.({ error: error.message }, 'anti-bug kick bad-add failed');
+                warn({ error: error.message }, 'anti-bug kick bad-add failed');
             }
         }
         await config.onDetect?.({ direction: 'group-add', id, author, participants: bad });
@@ -494,7 +499,7 @@ export const createAntiBugGuard = (sock, options = {}) => {
             const inCooldown = now - (chatCooldown.get(jid) || 0) < config.cooldownMs;
             chatCooldown.set(jid, now);
             if (!inCooldown) {
-                config.logger?.warn?.({ jid, sender, reasons: result.reasons }, 'anti-bug flagged incoming message');
+                warn({ jid, sender, reasons: result.reasons }, 'anti-bug flagged incoming message');
                 await config.onDetect?.({ direction: 'incoming', message: msg, jid, sender, reasons: result.reasons });
             }
             await respondToThreat(jid, msg.key, sender);
@@ -518,7 +523,7 @@ export const createAntiBugGuard = (sock, options = {}) => {
         sock.sendMessage = async (jid, content, sendOptions) => {
             const probe = detectBug(content, detectOptions);
             if (probe.flagged) {
-                config.logger?.warn?.({ jid, reasons: probe.reasons }, 'anti-bug blocked outgoing message');
+                warn({ jid, reasons: probe.reasons }, 'anti-bug blocked outgoing message');
                 await config.onDetect?.({ direction: 'outgoing', jid, content, reasons: probe.reasons });
                 throw new Error(`anti-bug blocked outgoing message: ${probe.reasons.join('; ')}`);
             }
@@ -528,6 +533,13 @@ export const createAntiBugGuard = (sock, options = {}) => {
 
     return {
         detect: (message) => detectBug(message, detectOptions),
+        setLogs: (on) => {
+            logsOn = !!on;
+            return logsOn;
+        },
+        get logsEnabled() {
+            return logsOn;
+        },
         stop: () => {
             if (config.guardIncoming && sock?.ev?.off) {
                 sock.ev.off('messages.upsert', handleUpsert);

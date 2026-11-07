@@ -14,5 +14,7 @@ export type WASocket = ReturnType<typeof makeWASocket>;
 export { makeWASocket };
 export default makeWASocket;
 export { createAntiBugGuard, detectBug, ANTIBUG_DEFAULTS } from './AnchorGuard/index.js';
+export { createBugLogs } from './BugLogs/index.js';
+export type { BugLogs, BugLogsConfig, BugLogEntry } from './BugLogs/index.js';
 export type { AnchorGuardConfig, AntiBugGuard, AntiBugLimits, DetectResult } from './AnchorGuard/index.js';
 //# sourceMappingURL=index.d.ts.map

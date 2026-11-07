@@ -317,9 +317,10 @@ export type AnyRegularMessageContent = (
 			pin: WAMessageKey
 			type: proto.PinInChat.Type
 			/**
-			 * 24 hours, 7 days, 30 days
+			 * 24 hours, 7 days, 30 days, or 0 for no expiry (the newer "pin forever" option;
+			 * experimental, not confirmed against the live server)
 			 */
-			time?: 86400 | 604800 | 2592000
+			time?: 0 | 86400 | 604800 | 2592000
 	  }
 	| {
 			product: WASendableProduct
@@ -394,7 +395,7 @@ export type MessageGenerationOptionsFromContent = MiscMessageGenerationOptions &
 
 export type WAMediaUploadFunction = (
 	encFilePath: string,
-	opts: { fileEncSha256B64: string; mediaType: MediaType; timeoutMs?: number }
+	opts: { fileEncSha256B64: string; mediaType: MediaType; timeoutMs?: number; newsletter?: boolean }
 ) => Promise<{ mediaUrl: string; directPath: string; meta_hmac?: string; ts?: number; fbid?: number }>
 
 export type MediaGenerationOptions = {

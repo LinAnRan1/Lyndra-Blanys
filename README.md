@@ -22,7 +22,7 @@ It ships compiled runtime files in `lib/` and protobuf artifacts in `WAProto/`, 
 
 ---
 
-## 🆕 Changelog / Updates (v0.0.1)
+## 🆕 Changelog / Updates (v0.0.2)
 
 **1. Fix `additionalNodes` Conflict (v0.0.1)**
 

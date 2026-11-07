@@ -197,8 +197,9 @@ export const prepareWAMessageMedia = async (
 		const fileSha256B64 = fileSha256.toString('base64')
 		const { mediaUrl, directPath } = await options.upload(filePath, {
 			fileEncSha256B64: fileSha256B64,
-			mediaType: mediaType,
-			timeoutMs: options.mediaUploadTimeoutMs
+			mediaType: (mediaType === 'audio' && (uploadData as any).ptt ? 'ptt' : mediaType) as typeof mediaType,
+			timeoutMs: options.mediaUploadTimeoutMs,
+			newsletter: true
 		})
 
 		await fs.unlink(filePath)
@@ -565,7 +566,7 @@ export const generateWAMessageContent = async (
 		m.pinInChatMessage.type = message.type
 		m.pinInChatMessage.senderTimestampMs = Date.now()
 
-		m.messageContextInfo.messageAddOnDurationInSecs = message.type === 1 ? message.time || 86400 : 0
+		m.messageContextInfo.messageAddOnDurationInSecs = message.type === 1 ? message.time ?? 86400 : 0
 	} else if (hasNonNullishProperty(message, 'buttonReply')) {
 		switch (message.type) {
 			case 'template':

@@ -135,3 +135,26 @@ test('socket integration: off by default, on with AnchorGuard: true', async () =
   await assert.rejects(() => on.sendMessage(GROUP, bugMessage), /anti-bug blocked outgoing message/)
   for (const s of [off, on]) { try { s.end(undefined) } catch {} }
 })
+
+test('logs option: on by default, off silences warnings, setLogs toggles at runtime', async () => {
+  const lines = []
+  const logger = { ...silent, warn(_o, msg) { lines.push(msg) } }
+  const on = fakeSock(); const guardOn = createAntiBugGuard(on, { logger, guardOutgoing: false, blockOnBug: false, kickOnBug: false })
+  upsert(on, { remoteJid: GROUP, id: 'L1', participant: BAD, fromMe: false })
+  await settle()
+  assert.ok(lines.some(l => /flagged incoming/.test(l)), 'logged by default')
+  assert.equal(guardOn.logsEnabled, true)
+
+  lines.length = 0
+  const off = fakeSock(); const guardOff = createAntiBugGuard(off, { logger, guardOutgoing: false, logs: false, blockOnBug: false, kickOnBug: false })
+  upsert(off, { remoteJid: GROUP, id: 'L2', participant: BAD, fromMe: false })
+  await settle()
+  assert.equal(lines.length, 0, 'logs:false prints nothing')
+  assert.ok(off.calls.some(c => c[0] === 'sendMessage'), 'but the guard still acts')
+  assert.equal(guardOff.logsEnabled, false)
+
+  assert.equal(guardOff.setLogs(true), true)
+  upsert(off, { remoteJid: '120363111111111111@g.us', id: 'L3', participant: BAD, fromMe: false })
+  await settle()
+  assert.ok(lines.some(l => /flagged incoming/.test(l)), 'logging resumes after setLogs(true)')
+})

@@ -781,7 +781,11 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		}
 
 		await authState.keys.transaction(async () => {
-			const mediaType = getMediaType(message)
+			// A group status wraps the real media inside groupStatusMessageV2, so the
+			// media type has to be read from the inner message or the stanza is sent without it.
+			const mediaType = getMediaType(
+				message.groupStatusMessageV2 ? (normalizeMessageContent(message) ?? message) : message
+			)
 			if (mediaType) {
 				extraAttrs['mediatype'] = mediaType
 			}
@@ -791,7 +795,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 				const bytes = encodeNewsletterMessage(patched as proto.IMessage)
 				binaryNodeContent.push({
 					tag: 'plaintext',
-					attrs: {},
+					attrs: mediaType ? { mediatype: mediaType } : {},
 					content: bytes
 				})
 				const stanza: BinaryNode = {
@@ -811,6 +815,15 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 
 			if (normalizeMessageContent(message)?.pinInChatMessage || normalizeMessageContent(message)?.reactionMessage) {
 				extraAttrs['decrypt-fail'] = 'hide' // todo: expand for reactions and other types
+			}
+
+			// a group status is the same message wrapped in groupStatusMessage(V2); the client only treats it as a
+			// group status when the stanza carries <meta is_group_status="true">
+			if (
+				(message.groupStatusMessage || message.groupStatusMessageV2) &&
+				!additionalNodes?.some(n => n.tag === 'meta' && n.attrs?.is_group_status)
+			) {
+				binaryNodeContent.push({ tag: 'meta', attrs: { is_group_status: 'true' } })
 			}
 
 			if (isGroupOrStatus && !isRetryResend) {
@@ -1693,10 +1706,10 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		},
 		sendStatusMention: (content: AnyMessageContent, jids: string[] = []) => richApi.sendStatusWhatsApp(content, jids),
 
-		/** richApi-baileys alias of `issuePrivacyTokens` */
+		/** alias of `issuePrivacyTokens` */
 		getPrivacyTokens: (jids: string[]) => issuePrivacyTokens(jids),
 
-		/** Send a story/status inside a group (richApi-baileys `swgc`). */
+		/** Send a story/status inside a group (`swgc`). */
 		swgc: async (jid: string, content: AnyMessageContent, _options: MiscMessageGenerationOptions = {}) => {
 			if (!isJidGroup(jid)) {
 				throw new Boom('JID must be a group', { statusCode: 400 })
@@ -1797,7 +1810,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 			return messageId
 		},
 
-		// ───────────── AI Rich Response helpers (richApi-baileys compatible) ─────────────
+		// ───────────── AI Rich Response helpers (compatible) ─────────────
 		sendTable: (
 			jid: string,
 			title: string,

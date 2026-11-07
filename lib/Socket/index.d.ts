@@ -391,6 +391,7 @@ declare const makeWASocket: (config: UserFacingSocketConfig) => {
     getNewsletterStatusUpdates: (jid: string, options?: import("../index.js").NewsletterStatusUpdatesFetchOptions) => Promise<import("../index.js").NewsletterStatusList>;
 } & {
     anchorGuard: import("../index.js").AntiBugGuard | undefined;
+    bugLogs: import("../index.js").BugLogs | undefined;
 };
 export default makeWASocket;
 //# sourceMappingURL=index.d.ts.map

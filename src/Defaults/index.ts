@@ -73,7 +73,11 @@ export const NEWSLETTER_MEDIA_PATH_MAP = {
 	video: '/newsletter/newsletter-video',
 	document: '/newsletter/newsletter-document',
 	audio: '/newsletter/newsletter-audio',
+	gif: '/newsletter/newsletter-gif',
+	ptt: '/newsletter/newsletter-ptt',
+	ptv: '/newsletter/newsletter-ptv',
 	sticker: '/newsletter/newsletter-image',
+	'sticker-pack': '/newsletter/newsletter-sticker-pack',
 	'thumbnail-link': '/newsletter/newsletter-thumbnail-link'
 } as const
 
@@ -99,6 +103,7 @@ export const DEFAULT_CONNECTION_CONFIG: SocketConfig = {
 	maxEventListeners: 64,
 	inlineSenderKeyDistribution: true,
 	AnchorGuard: false,
+	bugLogs: false,
 	shouldSyncHistoryMessage: ({ syncType }: proto.Message.IHistorySyncNotification) => {
 		return syncType !== proto.HistorySync.HistorySyncType.FULL
 	},

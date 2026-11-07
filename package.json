@@ -1,7 +1,7 @@
 {
   "name": "lyndra-blanys",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Lyndrā-Blanys — a WebSockets-based TypeScript/Node library for the WhatsApp Web multi-device API, built on Baileys 7.0.0-rc14.",
   "keywords": [
     "automation",
@@ -14,34 +14,25 @@
     "whatsapp",
     "whatsapp-api"
   ],
-  "homepage": "https://github.com/LinAnRan1/lin-baileys",
+  "homepage": "https://github.com/LinAnRan1/Lyndra-Blanys",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LinAnRan1/lin-baileys.git"
+    "url": "git+https://github.com/LinAnRan1/Lyndra-Blanys.git"
   },
   "license": "MIT",
   "author": "Lín Ān Rán",
-  "main": "lib/index.js",
+  "main": "lib/cjs/index.cjs",
   "types": "lib/index.d.ts",
   "files": [
-    "src/**/*",
     "lib/**/*",
     "WAProto/**/*",
-    "Example/**/*",
-    "Media/**/*",
-    "scripts/**/*",
-    "docs/**/*",
-    "test/**/*",
-    "proto-extract/**/*",
     "engine-requirements.js",
-    "NOTICE.md",
-    "LICENSE",
-    "README.md"
+    "NOTICE.md"
   ],
   "scripts": {
     "build:all": "npm run build && npm run build:docs",
     "build:docs": "typedoc",
-    "build": "tsc -P tsconfig.build.json && node ./scripts/copy-voip-assets.js && tsc-esm-fix --tsconfig=tsconfig.build.json --ext=.js",
+    "build": "tsc -P tsconfig.build.json && node ./scripts/copy-voip-assets.js && tsc-esm-fix --tsconfig=tsconfig.build.json --ext=.js && node ./scripts/build-cjs.mjs",
     "changelog:last": "conventional-changelog -p angular -r 2",
     "changelog:preview": "conventional-changelog -p angular -u",
     "changelog:update": "conventional-changelog -p angular -i CHANGELOG.md -s -r 0",
@@ -57,71 +48,74 @@
     "test": "node --experimental-vm-modules ./node_modules/.bin/jest --testMatch '**/*.test.ts'",
     "test:e2e": "NODE_TLS_REJECT_UNAUTHORIZED=0 node --experimental-vm-modules ./node_modules/.bin/jest --runInBand --forceExit --testMatch '**/*.test-e2e.ts'",
     "update:version": "tsx ./scripts/update-version.ts",
-    "test:port": "node --test test/port/*.test.js"
+    "test:port": "node --test test/port/*.test.js",
+    "test:matrix": "node --test test/matrix/*.test.js",
+    "test:cjs": "node --no-experimental-require-module --test test/cjs/*.test.cjs"
   },
   "dependencies": {
     "@adiwajshing/keyed-db": "^0.2.4",
-    "@cacheable/node-cache": "^1.4.0",
-    "@hapi/boom": "^9.1.3",
+    "@cacheable/node-cache": "~3.0.1",
+    "@hapi/boom": "^10.0.1",
     "async-mutex": "^0.5.0",
-    "fflate": "^0.8.0",
+    "fflate": "^0.8.3",
     "libsignal": "^6.0.0",
-    "lru-cache": "^11.1.0",
-    "music-metadata": "^11.12.3",
-    "p-queue": "^9.0.0",
-    "pino": "^9.6",
-    "protobufjs": "^7.5.6",
-    "whatsapp-rust-bridge": "0.5.4",
-    "ws": "^8.13.0"
+    "lru-cache": "^11.5.3",
+    "music-metadata": "^11.16.1",
+    "p-queue": "^9.3.5",
+    "pino": "^10.4.0",
+    "protobufjs": "^8.8.1",
+    "whatsapp-rust-bridge": "0.5.5",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.1",
-    "@eslint/js": "^9.31.0",
+    "@eslint/eslintrc": "^3.3.7",
+    "@eslint/js": "^9.39.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^20.9.0",
-    "@types/ws": "^8.0.0",
-    "@typescript-eslint/eslint-plugin": "^8",
-    "@typescript-eslint/parser": "^8",
+    "@types/node": "^20.19.0",
+    "@types/ws": "^8.18.2",
+    "@typescript-eslint/eslint-plugin": "^8.72.1",
+    "@typescript-eslint/parser": "^8.72.1",
     "@whiskeysockets/eslint-config": "^1.0.0",
-    "conventional-changelog": "^7.1.1",
-    "conventional-changelog-angular": "^8.0.0",
+    "conventional-changelog": "^8.1.3",
+    "conventional-changelog-angular": "^9.4.0",
+    "esbuild": "^0.28.2",
     "esbuild-register": "^3.6.0",
-    "eslint": "^9",
-    "eslint-config-prettier": "^10.1.2",
-    "eslint-plugin-prettier": "^5.4.0",
+    "eslint": "^9.39.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.7",
     "fluent-ffmpeg": "^2.1.3",
-    "jest": "^30.0.5",
+    "jest": "^30.5.2",
     "jimp": "^1.6.1",
-    "jiti": "^2.4.2",
+    "jiti": "^2.7.0",
     "json": "^11.0.0",
-    "link-preview-js": "^3.0.0",
-    "lru-cache": "^11.1.0",
-    "open": "^8.4.2",
-    "pino-pretty": "^13.1.1",
-    "prettier": "^3.5.3",
-    "protobufjs-cli": "^1.1.3",
-    "release-it": "^20.0.1",
-    "sharp": "^0.34.5",
-    "ts-jest": "^29.4.0",
+    "link-preview-js": "^4.0.4",
+    "lru-cache": "^11.5.3",
+    "open": "^11.0.4",
+    "pino-pretty": "^13.2.0",
+    "prettier": "^3.9.10",
+    "protobufjs-cli": "^2.7.1",
+    "release-it": "^21.1.2",
+    "sharp": "^0.35.5",
+    "ts-jest": "^29.4.15",
     "tsc-esm-fix": "^3.1.2",
-    "tsx": "^4.20.3",
-    "typedoc": "^0.27.9",
-    "typedoc-plugin-markdown": "4.4.2",
-    "typescript": "^5.8.2"
+    "tsx": "^4.23.15",
+    "typedoc": "^0.28.20",
+    "typedoc-plugin-markdown": "^4.14.1",
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "@nekodb/client": "*",
     "@roamhq/wrtc": "*",
-    "audio-decode": "^2.1.3",
-    "better-sqlite3": "^11.0.0 || ^12.0.0",
+    "audio-decode": "^2.1.3 || ^3.0.0",
+    "better-sqlite3": "^11.0.0 || ^12.0.0 || ^13.0.0",
     "fluent-ffmpeg": "*",
-    "ioredis": "^5.0.0",
+    "ioredis": "^5.0.0 || ^6.0.0",
     "jimp": "^1.6.1",
-    "link-preview-js": "^3.0.0",
-    "mongodb": "^6.0.0",
+    "link-preview-js": "^3.0.0 || ^4.0.0 || ^5.0.0",
+    "mongodb": "^6.0.0 || ^7.0.0",
     "mysql2": "^3.0.0",
     "pg": "^8.0.0",
-    "sharp": "*"
+    "sharp": "^0.33.0 || ^0.34.0 || ^0.35.0"
   },
   "resolutions": {
     "ajv@npm:^6.12.4": "^6.14.0",
@@ -195,6 +189,23 @@
     "node": ">=20.0.0"
   },
   "bugs": {
-    "url": "https://github.com/LinAnRan1/lin-baileys/issues"
+    "url": "https://github.com/LinAnRan1/Lyndra-Blanys/issues"
+  },
+  "module": "lib/index.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./lib/index.d.ts",
+        "default": "./lib/index.js"
+      },
+      "require": {
+        "types": "./lib/cjs/index.d.cts",
+        "default": "./lib/cjs/index.cjs"
+      }
+    },
+    "./package.json": "./package.json",
+    "./lib/*": "./lib/*",
+    "./WAProto": "./WAProto/index.js",
+    "./WAProto/*": "./WAProto/*"
   }
 }

@@ -42,9 +42,9 @@ export declare const makeMessagesSocket: (config: SocketConfig) => {
     updateMediaMessage: (message: WAMessage) => Promise<WAMessage>;
     sendMessage: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<any>;
     sendStatusMention: (content: AnyMessageContent, jids?: string[]) => Promise<WAMessage>;
-    /** richApi-baileys alias of `issuePrivacyTokens` */
+    /** alias of `issuePrivacyTokens` */
     getPrivacyTokens: (jids: string[]) => Promise<any>;
-    /** Send a story/status inside a group (richApi-baileys `swgc`). */
+    /** Send a story/status inside a group (`swgc`). */
     swgc: (jid: string, content: AnyMessageContent, _options?: MiscMessageGenerationOptions) => Promise<any>;
     /**
      * Send a link message with a fully custom preview card (title, description, thumbnail).

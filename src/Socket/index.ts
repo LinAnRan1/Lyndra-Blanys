@@ -1,4 +1,5 @@
 import { createAntiBugGuard } from '../AnchorGuard/index.js'
+import { createBugLogs } from '../BugLogs/index.js'
 import { DEFAULT_CONNECTION_CONFIG } from '../Defaults'
 import type { UserFacingSocketConfig } from '../Types'
 import { prepareModernMessageContent } from '../Utils/modern-messages.js'
@@ -35,12 +36,17 @@ const makeWASocket = (config: UserFacingSocketConfig) => {
 		getNewsletterStatusUpdates: makeNewsletterStatusUpdatesFetcher(sock as any)
 	})
 
+	// opt-in error printer, wrapped first so the guard sits on top of it; `bugLogs: true` or an options object. Sets `sock.bugLogs`
+	const bugLogs = newConfig.bugLogs
+		? createBugLogs(extended, newConfig.bugLogs === true ? {} : newConfig.bugLogs)
+		: undefined
+
 	// opt-in anti force-close guard; off unless `AnchorGuard: true`
 	const anchorGuard = newConfig.AnchorGuard
 		? createAntiBugGuard(extended, { logger: extended.logger, ...(newConfig.AnchorGuardConfig ?? {}) })
 		: undefined
 
-	return Object.assign(extended, { anchorGuard })
+	return Object.assign(extended, { anchorGuard, bugLogs })
 }
 
 export default makeWASocket

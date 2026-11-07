@@ -1,6 +1,6 @@
 export class WasmEngine {
-    static "__#11@#globalCallbackListeners": Map<any, any>;
-    static "__#11@#globalCallbacksRegistered": boolean;
+    static "__#private@#globalCallbackListeners": Map<any, any>;
+    static "__#private@#globalCallbacksRegistered": boolean;
     static registerGlobalCallbackListener: (callbackName: any, handler: any) => void;
     static notifyGlobalCallbackListeners: (callbackName: any, data: any) => void;
     constructor(config?: {});

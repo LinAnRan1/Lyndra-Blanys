@@ -47,7 +47,11 @@ export declare const NEWSLETTER_MEDIA_PATH_MAP: {
     readonly video: "/newsletter/newsletter-video";
     readonly document: "/newsletter/newsletter-document";
     readonly audio: "/newsletter/newsletter-audio";
+    readonly gif: "/newsletter/newsletter-gif";
+    readonly ptt: "/newsletter/newsletter-ptt";
+    readonly ptv: "/newsletter/newsletter-ptv";
     readonly sticker: "/newsletter/newsletter-image";
+    readonly 'sticker-pack': "/newsletter/newsletter-sticker-pack";
     readonly 'thumbnail-link': "/newsletter/newsletter-thumbnail-link";
 };
 export declare const DEFAULT_CONNECTION_CONFIG: SocketConfig;
